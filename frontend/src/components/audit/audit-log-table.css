@@ -1,0 +1,275 @@
+/**
+ * AuditLogTable - Estilos standalone do componente reutilizável
+ *
+ * Prefixo "alt-" (audit-log-table) para evitar colisão com a página Auditoria.
+ */
+
+.alt-wrapper {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  overflow: hidden;
+}
+
+.alt-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.alt-table thead {
+  background: #f8f9fa;
+}
+
+.alt-table th {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.alt-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  color: #333;
+}
+
+.alt-table tbody tr:hover {
+  background: #fafafa;
+}
+
+.alt-text-right {
+  text-align: right;
+}
+
+.alt-empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: #999;
+  font-style: italic;
+}
+
+/* Entidade */
+.alt-entity-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.alt-entity-name {
+  font-weight: 500;
+}
+
+.alt-entity-id {
+  font-size: 11px;
+  color: #999;
+  font-family: monospace;
+}
+
+/* Usuário */
+.alt-user-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.alt-user-icon {
+  color: #999;
+  flex-shrink: 0;
+}
+
+/* Data */
+.alt-date-cell {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+}
+
+/* Badges de Ação */
+.alt-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.alt-action-create {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.alt-action-update {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.alt-action-delete {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.alt-action-login {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.alt-action-logout {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.alt-action-export {
+  background: #fffde7;
+  color: #f57f17;
+}
+
+.alt-action-default {
+  background: #f5f5f5;
+  color: #555;
+}
+
+/* Botão Detalhes */
+.alt-btn-details {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #f0f4ff;
+  color: #1976d2;
+  border: 1px solid #bbdefb;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.alt-btn-details:hover:not(:disabled) {
+  background: #1976d2;
+  color: white;
+}
+
+.alt-btn-details:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════
+   Modal
+   ═══════════════════════════════════════════════ */
+.alt-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.alt-modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 700px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.alt-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e0e0;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+  border-radius: 12px 12px 0 0;
+}
+
+.alt-modal-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.alt-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #666;
+  transition: color 0.2s;
+}
+
+.alt-modal-close:hover {
+  color: #c62828;
+}
+
+.alt-modal-body {
+  padding: 24px;
+}
+
+.alt-modal-description {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 16px;
+}
+
+.alt-modal-description strong {
+  color: #1a1a2e;
+}
+
+/* Metadados */
+.alt-metadata {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.alt-metadata strong {
+  color: #1a1a2e;
+}
+
+.alt-metadata-ip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .alt-table {
+    font-size: 12px;
+  }
+
+  .alt-table th,
+  .alt-table td {
+    padding: 8px 10px;
+  }
+
+  .alt-entity-id {
+    display: none;
+  }
+}

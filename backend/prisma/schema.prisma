@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Organização / Empresa (O "Tenant")
+model Tenant {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  cnpj          String?   @unique
+  email         String    @unique
+  phone         String?
+  address       String?
+  plan          String    @default("basic")
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users         User[]
+  subscriptions Subscription[]
+  tickets       Ticket[]
+  clients       Client[]
+  products      Product[]
+  orders        Order[]
+  memberSubscriptions MemberSubscription[]
+  onlineSessions OnlineSession[]
+  modules       TenantModule[]
+}
+
+// Usuários vinculados a um Tenant
+model User {
+  id        String    @id @default(uuid())
+  tenantId  String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email     String
+  name      String
+  password  String
+  role      Role      @default(MEMBER)
+  avatarUrl String?
+  emailVerified Boolean @default(false)
+  active    Boolean   @default(true)
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  tickets         Ticket[]
+  memberSubscriptions MemberSubscription[]
+  onlineSessions  OnlineSession[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  MEMBER
+}
+
+// Módulos por tenant
+model TenantModule {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  module      String
+  active      Boolean   @default(true)
+  activatedAt DateTime  @default(now())
+  deactivatedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([tenantId, module])
+  @@index([tenantId])
+}
+
+// Sessões de usuário online
+model OnlineSession {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  loginAt     DateTime  @default(now())
+  lastActivity DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+  @@index([tenantId])
+}
+
+// Chamados (tickets)
+model Ticket {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  title       String
+  description String?
+  category    String?
+  priority    String    @default("medium")
+  status      String    @default("open")
+  openedAt    DateTime  @default(now())
+  closedAt    DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+// Clientes (CRM)
+model Client {
+  id           String    @id @default(uuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  cpfCnpj      String?
+  email        String?
+  phone        String?
+  address      String?
+  status       String    @default("active")
+  origin       String?
+  firstPurchaseDate DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  orders       Order[]
+
+  @@index([tenantId])
+  @@index([cpfCnpj])
+}
+
+// Produtos (e-commerce)
+model Product {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Decimal
+  stock       Int       @default(0)
+  category    String?
+  imageUrl    String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  orderItems  OrderItem[]
+
+  @@index([tenantId])
+}
+
+// Pedidos (e-commerce)
+model Order {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id])
+  status      String    @default("pending")
+  totalAmount Decimal
+  orderDate   DateTime  @default(now())
+  paymentDate DateTime?
+  shippingDate DateTime?
+  deliveryDate DateTime?
+
+  items       OrderItem[]
+
+  @@index([tenantId])
+  @@index([clientId])
+}
+
+// Itens do pedido
+model OrderItem {
+  id        String    @id @default(uuid())
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product   @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Decimal
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// Assinaturas/Membros
+model MemberSubscription {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  planType    String
+  startDate   DateTime  @db.Date
+  endDate     DateTime? @db.Date
+  monthlyValue Decimal?
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+// Controle de Assinatura / Planos (integração Stripe ou Asaas)
+model Subscription {
+  id                    String             @id @default(uuid())
+  tenantId              String             @unique
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Gateway utilizado: 'stripe' | 'asaas'
+  gateway               String             @default("asaas")
+  
+  // Stripe
+  stripeCustomerId      String?            @unique
+  stripeSubscriptionId  String?            @unique
+  
+  // Asaas
+  asaasCustomerId       String?            @unique
+  asaasSubscriptionId   String?            @unique
+  
+  // Status e plano
+  status                SubscriptionStatus @default(INCOMPLETE)
+  planId                String
+  currentPeriodEnd      DateTime
+  
+  // Controle de tentativas de pagamento
+  paymentAttempts       Int                @default(0)
+  lastPaymentAttempt    DateTime?
+  lastInvoiceUrl        String?            // URL da fatura para o cliente pagar
+  
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+  @@index([asaasCustomerId])
+  @@index([asaasSubscriptionId])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  TRIALING
+}
+
+// ============================================
+// Audit Logs - Trilha de Auditoria
+// ============================================
+// Registra quem fez o quê, quando e em qual entidade.
+// Essencial para sistemas corporativos (ERP, CRM, Chamados).
+model AuditLog {
+  id         String       @id @default(uuid())
+  tenantId   String
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Quem realizou a ação? (Pode ser nulo caso seja um processo do sistema/cron)
+  userId     String?
+  userEmail  String?
+
+  // O que foi feito?
+  action     AuditAction
+  entity     String       // ex: "Client", "Ticket", "User", "Product"
+  entityId   String?      // ID do registro afetado
+
+  // Detalhes das alterações (Armazenado como JSON)
+  oldValues  Json?        // Estado dos dados ANTES da alteração
+  newValues  Json?        // Estado dos dados DEPOIS da alteração
+
+  // Contexto da requisição
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt  DateTime     @default(now())
+
+  @@index([tenantId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  EXPORT
+}
