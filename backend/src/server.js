@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const prisma = require('./config/prisma');
-const logger = require('./config/logger');
+const { logger } = require('./config/logger');
 
 // Importar rotas
 const authRoutes = require('./routes/auth');

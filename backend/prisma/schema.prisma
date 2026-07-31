@@ -28,6 +28,7 @@ model Tenant {
   products      Product[]
   orders        Order[]
   memberSubscriptions MemberSubscription[]
+  auditLogs     AuditLog[]
   onlineSessions OnlineSession[]
   modules       TenantModule[]
 }

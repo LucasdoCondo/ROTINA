@@ -19,12 +19,20 @@
 
 const { resend, SENDER_EMAIL, APP_URL, APP_NAME } = require('../config/resend');
 
-// Importar templates React Email
-const WelcomeEmail = require('../emails/WelcomeEmail');
-const PasswordResetEmail = require('../emails/PasswordResetEmail');
-const InviteEmail = require('../emails/InviteEmail');
-const PaymentFailedEmail = require('../emails/PaymentFailedEmail');
-const InvoiceEmail = require('../emails/InvoiceEmail');
+/**
+ * Carrega um template de e-mail sob demanda (lazy load)
+ * Os templates são arquivos .jsx que só funcionam em ambiente com transpilação.
+ * Em produção (Vercel), o build do backend resolve isso.
+ * Em desenvolvimento local, retorna null para não travar o servidor.
+ */
+function loadTemplate(templateName) {
+  try {
+    return require(`../emails/${templateName}`);
+  } catch (err) {
+    console.warn(`[Email] Template ${templateName} não disponível em dev. Erro: ${err.message}`);
+    return null;
+  }
+}
 
 const emailService = {
   /**
@@ -38,6 +46,11 @@ const emailService = {
     if (!resend) {
       console.warn('[Email] Resend não configurado. Boas-vindas não enviadas.');
       return { success: false, reason: 'RESEND_NOT_CONFIGURED' };
+    }
+
+    const WelcomeEmail = loadTemplate('WelcomeEmail');
+    if (!WelcomeEmail) {
+      return { success: false, reason: 'TEMPLATE_NOT_AVAILABLE' };
     }
 
     try {
@@ -77,6 +90,11 @@ const emailService = {
     if (!resend) {
       console.warn('[Email] Resend não configurado. Reset de senha não enviado.');
       return { success: false, reason: 'RESEND_NOT_CONFIGURED' };
+    }
+
+    const PasswordResetEmail = loadTemplate('PasswordResetEmail');
+    if (!PasswordResetEmail) {
+      return { success: false, reason: 'TEMPLATE_NOT_AVAILABLE' };
     }
 
     try {
@@ -120,6 +138,11 @@ const emailService = {
       return { success: false, reason: 'RESEND_NOT_CONFIGURED' };
     }
 
+    const InviteEmail = loadTemplate('InviteEmail');
+    if (!InviteEmail) {
+      return { success: false, reason: 'TEMPLATE_NOT_AVAILABLE' };
+    }
+
     try {
       const { data, error } = await resend.emails.send({
         from: SENDER_EMAIL,
@@ -158,6 +181,11 @@ const emailService = {
     if (!resend) {
       console.warn('[Email] Resend não configurado. Alerta de falha não enviado.');
       return { success: false, reason: 'RESEND_NOT_CONFIGURED' };
+    }
+
+    const PaymentFailedEmail = loadTemplate('PaymentFailedEmail');
+    if (!PaymentFailedEmail) {
+      return { success: false, reason: 'TEMPLATE_NOT_AVAILABLE' };
     }
 
     try {
@@ -201,6 +229,11 @@ const emailService = {
     if (!resend) {
       console.warn('[Email] Resend não configurado. Fatura não enviada.');
       return { success: false, reason: 'RESEND_NOT_CONFIGURED' };
+    }
+
+    const InvoiceEmail = loadTemplate('InvoiceEmail');
+    if (!InvoiceEmail) {
+      return { success: false, reason: 'TEMPLATE_NOT_AVAILABLE' };
     }
 
     try {
@@ -283,6 +316,11 @@ const emailService = {
     if (!resend) {
       console.warn('[Email] Resend não configurado. E-mail de teste não enviado.');
       return { success: false, reason: 'RESEND_NOT_CONFIGURED' };
+    }
+
+    const WelcomeEmail = loadTemplate('WelcomeEmail');
+    if (!WelcomeEmail) {
+      return { success: false, reason: 'TEMPLATE_NOT_AVAILABLE' };
     }
 
     try {
