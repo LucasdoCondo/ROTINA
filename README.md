@@ -1,6 +1,13 @@
-# Sistema SaaS Empresarial
+# ROTINA
 
-Sistema SaaS (Software as a Service) completo para gestão empresarial, com módulos de Dashboard, CRM, Chamados, E-commerce e Gestão de Membros.
+Sistema SaaS multi-tenant para gestão empresarial, com módulos de Dashboard, CRM, Chamados, E-commerce e Gestão de Membros.
+
+<p align="center">
+  <img alt="Licença" src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg" />
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-18.x-green" />
+  <img alt="React" src="https://img.shields.io/badge/React-18-blue" />
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-12%2B-blue" />
+</p>
 
 ## Arquitetura
 

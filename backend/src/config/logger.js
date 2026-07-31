@@ -2,7 +2,7 @@ const pino = require('pino');
 
 const isDev = process.env.NODE_ENV === 'development';
 
-export const logger = pino(
+const logger = pino(
   {
     level: isDev ? 'debug' : 'info',
     base: {
@@ -12,3 +12,5 @@ export const logger = pino(
   },
   isDev ? pino.transport({ target: 'pino-pretty', options: { colorize: true } }) : undefined
 );
+
+module.exports = { logger };

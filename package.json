@@ -1,7 +1,7 @@
 {
   "name": "saas-sistema-empresarial",
   "version": "1.0.0",
-  "description": "Sistema SaaS para gestão empresarial",
+  "description": "ROTINA - Sistema SaaS multi-tenant para gestão empresarial",
   "private": true,
   "workspaces": [
     "backend",
