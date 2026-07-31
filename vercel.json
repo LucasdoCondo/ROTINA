@@ -1,7 +1,5 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "buildCommand": "npx prisma migrate deploy --schema=backend/prisma/schema.prisma",
   "builds": [
     {
       "src": "frontend/package.json",
@@ -21,21 +19,8 @@
       "dest": "backend/src/server.js"
     },
     {
-      "handle": "filesystem"
-    },
-    {
       "src": "/(.*)",
-      "dest": "frontend/dist/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "frontend/dist/index.html"
+      "dest": "frontend/$1"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "regions": ["iad1"],
-  "cleanUrls": true,
-  "trailingSlash": false
+  ]
 }
