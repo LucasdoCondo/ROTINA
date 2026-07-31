@@ -8,6 +8,7 @@
     "frontend"
   ],
   "scripts": {
+    "build": "npx prisma migrate deploy --schema=backend/prisma/schema.prisma && cd frontend && npm install && npm run build",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm start",
