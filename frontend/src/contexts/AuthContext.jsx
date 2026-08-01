@@ -70,9 +70,10 @@ export const AuthProvider = ({ children }) => {
       toast.success('Cadastro realizado com sucesso!');
       return { success: true };
     } catch (error) {
-      const message = error.response?.data?.message || 'Erro ao registrar';
-      toast.error(message);
-      return { success: false, error: message };
+      const errorData = error.response?.data || {};
+      const message = errorData.message || 'Erro ao registrar';
+      // Retornar dados completos do erro para validação de campos
+      return { success: false, error: { message, ...errorData } };
     }
   };
 

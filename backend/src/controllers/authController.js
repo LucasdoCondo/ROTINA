@@ -8,11 +8,55 @@ const registrarTenant = async (req, res) => {
   try {
     const { nomeEmpresa, slug, cnpj, emailEmpresa, telefone, endereco, plano, usuarioNome, usuarioEmail, usuarioSenha } = req.body;
 
-    // Validações básicas
-    if (!nomeEmpresa || !emailEmpresa || !usuarioNome || !usuarioEmail || !usuarioSenha) {
+    // Validações detalhadas por campo
+    const erros = [];
+
+    // Validação do nome da empresa
+    if (!nomeEmpresa || nomeEmpresa.trim().length < 2) {
+      erros.push({ campo: 'nomeEmpresa', mensagem: 'Nome da empresa deve ter pelo menos 2 caracteres' });
+    }
+
+    // Validação do email da empresa
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailEmpresa) {
+      erros.push({ campo: 'emailEmpresa', mensagem: 'Email da empresa é obrigatório' });
+    } else if (!emailRegex.test(emailEmpresa)) {
+      erros.push({ campo: 'emailEmpresa', mensagem: 'Email da empresa inválido' });
+    }
+
+    // Validação do CNPJ (se fornecido)
+    if (cnpj && cnpj.trim().length > 0) {
+      const cnpjLimpo = cnpj.replace(/\D/g, '');
+      if (cnpjLimpo.length !== 14) {
+        erros.push({ campo: 'cnpj', mensagem: 'CNPJ deve ter 14 dígitos' });
+      }
+    }
+
+    // Validação do nome do usuário
+    if (!usuarioNome || usuarioNome.trim().length < 2) {
+      erros.push({ campo: 'usuarioNome', mensagem: 'Nome do usuário deve ter pelo menos 2 caracteres' });
+    }
+
+    // Validação do email do usuário
+    if (!usuarioEmail) {
+      erros.push({ campo: 'usuarioEmail', mensagem: 'Email do usuário é obrigatório' });
+    } else if (!emailRegex.test(usuarioEmail)) {
+      erros.push({ campo: 'usuarioEmail', mensagem: 'Email do usuário inválido' });
+    }
+
+    // Validação da senha
+    if (!usuarioSenha) {
+      erros.push({ campo: 'usuarioSenha', mensagem: 'Senha é obrigatória' });
+    } else if (usuarioSenha.length < 6) {
+      erros.push({ campo: 'usuarioSenha', mensagem: 'Senha deve ter no mínimo 6 caracteres' });
+    }
+
+    // Se houver erros de validação, retornar
+    if (erros.length > 0) {
       return res.status(400).json({
-        message: 'Campos obrigatórios faltando',
-        code: 'MISSING_FIELDS'
+        message: 'Erros de validação',
+        code: 'VALIDATION_ERROR',
+        errors: erros
       });
     }
 
@@ -24,7 +68,21 @@ const registrarTenant = async (req, res) => {
     if (tenantExistente) {
       return res.status(409).json({
         message: 'Email da empresa já cadastrado',
-        code: 'TENANT_EMAIL_EXISTS'
+        code: 'TENANT_EMAIL_EXISTS',
+        field: 'emailEmpresa'
+      });
+    }
+
+    // Verificar se email do usuário já existe
+    const usuarioExistente = await prisma.user.findFirst({
+      where: { email: usuarioEmail }
+    });
+
+    if (usuarioExistente) {
+      return res.status(409).json({
+        message: 'Email do usuário já cadastrado',
+        code: 'USER_EMAIL_EXISTS',
+        field: 'usuarioEmail'
       });
     }
 

@@ -24,24 +24,58 @@ export const Registrar = () => {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // Limpar erro do campo quando o usuário começar a digitar
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: '' }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
 
-    // Validações
-    if (formData.usuarioSenha !== formData.confirmarSenha) {
-      setError('As senhas não coincidem');
-      return;
+    // Validações básicas no frontend
+    const erros = {};
+
+    if (!formData.nomeEmpresa || formData.nomeEmpresa.trim().length < 2) {
+      erros.nomeEmpresa = 'Nome da empresa deve ter pelo menos 2 caracteres';
     }
 
-    if (formData.usuarioSenha.length < 6) {
-      setError('A senha deve ter no mínimo 6 caracteres');
+    if (!formData.emailEmpresa) {
+      erros.emailEmpresa = 'Email da empresa é obrigatório';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.emailEmpresa)) {
+      erros.emailEmpresa = 'Email da empresa inválido';
+    }
+
+    if (!formData.usuarioNome || formData.usuarioNome.trim().length < 2) {
+      erros.usuarioNome = 'Nome do usuário deve ter pelo menos 2 caracteres';
+    }
+
+    if (!formData.usuarioEmail) {
+      erros.usuarioEmail = 'Email do usuário é obrigatório';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.usuarioEmail)) {
+      erros.usuarioEmail = 'Email do usuário inválido';
+    }
+
+    if (!formData.usuarioSenha) {
+      erros.usuarioSenha = 'Senha é obrigatória';
+    } else if (formData.usuarioSenha.length < 6) {
+      erros.usuarioSenha = 'Senha deve ter no mínimo 6 caracteres';
+    }
+
+    if (formData.usuarioSenha !== formData.confirmarSenha) {
+      erros.confirmarSenha = 'As senhas não coincidem';
+    }
+
+    if (Object.keys(erros).length > 0) {
+      setFieldErrors(erros);
+      setError('Por favor, corrija os campos destacados');
       return;
     }
 
@@ -63,6 +97,24 @@ export const Registrar = () => {
 
     if (result.success) {
       navigate('/');
+    } else if (result.error) {
+      // Tratar erros do backend
+      if (result.error.errors && Array.isArray(result.error.errors)) {
+        // Erros de validação do backend
+        const backendErrors = {};
+        result.error.errors.forEach((err) => {
+          backendErrors[err.campo] = err.mensagem;
+        });
+        setFieldErrors(backendErrors);
+        setError('Por favor, corrija os campos destacados');
+      } else if (result.error.field) {
+        // Erro específico de campo (email duplicado, etc)
+        setFieldErrors({ [result.error.field]: result.error.message });
+        setError(result.error.message);
+      } else {
+        // Erro genérico
+        setError(result.error.message || 'Erro ao criar conta');
+      }
     }
 
     setLoading(false);
@@ -91,7 +143,9 @@ export const Registrar = () => {
                 value={formData.nomeEmpresa}
                 onChange={handleChange}
                 required
+                className={fieldErrors.nomeEmpresa ? 'input-error' : ''}
               />
+              {fieldErrors.nomeEmpresa && <span className="field-error">{fieldErrors.nomeEmpresa}</span>}
             </div>
 
             <div className="form-row">
@@ -104,7 +158,9 @@ export const Registrar = () => {
                   value={formData.cnpj}
                   onChange={handleChange}
                   placeholder="00.000.000/0000-00"
+                  className={fieldErrors.cnpj ? 'input-error' : ''}
                 />
+                {fieldErrors.cnpj && <span className="field-error">{fieldErrors.cnpj}</span>}
               </div>
 
               <div className="form-group">
@@ -120,6 +176,7 @@ export const Registrar = () => {
                   <option value="enterprise">Enterprise</option>
                 </select>
               </div>
+
             </div>
 
             <div className="form-group">
@@ -131,7 +188,9 @@ export const Registrar = () => {
                 value={formData.emailEmpresa}
                 onChange={handleChange}
                 required
+                className={fieldErrors.emailEmpresa ? 'input-error' : ''}
               />
+              {fieldErrors.emailEmpresa && <span className="field-error">{fieldErrors.emailEmpresa}</span>}
             </div>
 
             <div className="form-group">
@@ -143,7 +202,9 @@ export const Registrar = () => {
                 value={formData.telefone}
                 onChange={handleChange}
                 placeholder="(00) 00000-0000"
+                className={fieldErrors.telefone ? 'input-error' : ''}
               />
+              {fieldErrors.telefone && <span className="field-error">{fieldErrors.telefone}</span>}
             </div>
 
             <div className="form-group">
@@ -154,7 +215,9 @@ export const Registrar = () => {
                 value={formData.endereco}
                 onChange={handleChange}
                 rows="2"
+                className={fieldErrors.endereco ? 'input-error' : ''}
               />
+              {fieldErrors.endereco && <span className="field-error">{fieldErrors.endereco}</span>}
             </div>
           </div>
 
@@ -170,7 +233,9 @@ export const Registrar = () => {
                 value={formData.usuarioNome}
                 onChange={handleChange}
                 required
+                className={fieldErrors.usuarioNome ? 'input-error' : ''}
               />
+              {fieldErrors.usuarioNome && <span className="field-error">{fieldErrors.usuarioNome}</span>}
             </div>
 
             <div className="form-group">
@@ -182,7 +247,9 @@ export const Registrar = () => {
                 value={formData.usuarioEmail}
                 onChange={handleChange}
                 required
+                className={fieldErrors.usuarioEmail ? 'input-error' : ''}
               />
+              {fieldErrors.usuarioEmail && <span className="field-error">{fieldErrors.usuarioEmail}</span>}
             </div>
 
             <div className="form-row">
@@ -196,7 +263,9 @@ export const Registrar = () => {
                   onChange={handleChange}
                   required
                   minLength="6"
+                  className={fieldErrors.usuarioSenha ? 'input-error' : ''}
                 />
+                {fieldErrors.usuarioSenha && <span className="field-error">{fieldErrors.usuarioSenha}</span>}
               </div>
 
               <div className="form-group">
@@ -208,7 +277,9 @@ export const Registrar = () => {
                   value={formData.confirmarSenha}
                   onChange={handleChange}
                   required
+                  className={fieldErrors.confirmarSenha ? 'input-error' : ''}
                 />
+                {fieldErrors.confirmarSenha && <span className="field-error">{fieldErrors.confirmarSenha}</span>}
               </div>
             </div>
           </div>
