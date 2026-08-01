@@ -12,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
 import { initSentry } from './utils/sentry';
+import { Analytics } from '@vercel/analytics/react';
 
 // Componente para rotas protegidas (autenticação)
 const ProtectedRoute = ({ children }) => {
@@ -130,6 +131,7 @@ function App() {
     <Router>
       <AuthProvider>
         <AppRoutes />
+        <Analytics />
       </AuthProvider>
     </Router>
   );
