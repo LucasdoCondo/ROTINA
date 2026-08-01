@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { OnboardingTour } from '../components/OnboardingTour';
 import { SupportWidget } from '../components/SupportWidget';
+import api from '../services/api';
 import {
   LayoutDashboard,
   Users,
@@ -24,7 +25,7 @@ import './MainLayout.css';
 
 export const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { user, logout } = useAuth();
+  const { user, logout, showOnboarding } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -60,16 +61,10 @@ export const MainLayout = () => {
     }
 
     try {
-      const response = await fetch('/api/dashboard/organization', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await api.delete('/dashboard/organization');
+      const data = response.data;
 
-      const data = await response.json();
-
-      if (response.ok) {
+      if (response.status === 200) {
         alert('Organização excluída com sucesso. Você será redirecionado para o login.');
         window.location.href = '/login';
       } else {
@@ -77,7 +72,7 @@ export const MainLayout = () => {
       }
     } catch (error) {
       console.error('Erro ao excluir organização:', error);
-      alert('Erro ao excluir organização. Tente novamente.');
+      alert(error.response?.data?.message || 'Erro ao excluir organização. Tente novamente.');
     }
   };
 

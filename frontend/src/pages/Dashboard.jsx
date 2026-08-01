@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { dashboardService } from '../services/api';
+import api, { dashboardService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -81,29 +81,17 @@ export const Dashboard = () => {
 
   const exportarMeusDados = async () => {
     try {
-      const response = await fetch('/api/user/export', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        const userId = user?.id || 'usuario';
-        link.download = `dados-usuario-${userId}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        alert('Seus dados foram exportados com sucesso!');
-      } else {
-        const data = await response.json();
-        alert(`Erro ao exportar: ${data.message || 'Falha na exportação'}`);
-      }
+      const response = await api.get('/usuarios/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      const userId = user?.id || 'usuario';
+      link.download = `dados-usuario-${userId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      alert('Seus dados foram exportados com sucesso!');
     } catch (error) {
       console.error('Erro na exportação:', error);
       alert('Erro ao exportar dados. Tente novamente.');
