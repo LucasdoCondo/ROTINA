@@ -6,6 +6,10 @@ const { authenticateToken, authorize } = require('../middleware/auth');
 // Listar usuários (MANAGER+)
 router.get('/', authenticateToken, authorize('user:list'), usuariosController.listarUsuarios);
 
+// Exportar dados do usuário (LGPD - Direito de portabilidade)
+// IMPORTANTE: Deve vir ANTES de /:id para não ser interpretado como ID
+router.get('/export', authenticateToken, usuariosController.exportarDadosUsuario);
+
 // Obter usuário por ID (MANAGER+)
 router.get('/:id', authenticateToken, authorize('user:list'), usuariosController.getUsuario);
 
@@ -17,8 +21,5 @@ router.put('/:id', authenticateToken, authorize('user:update'), usuariosControll
 
 // Deletar usuário (ADMIN only)
 router.delete('/:id', authenticateToken, authorize('user:delete'), usuariosController.deletarUsuario);
-
-// Exportar dados do usuário (LGPD - Direito de portabilidade)
-router.get('/export', authenticateToken, usuariosController.exportarDadosUsuario);
 
 module.exports = router;

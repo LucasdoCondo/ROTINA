@@ -558,10 +558,21 @@ const subscriptionService = {
     const now = new Date();
     const isExpired = now > subscription.currentPeriodEnd;
 
+    // INCOMPLETE e TRIALING são considerados acesso liberado
+    // (período de teste/onboarding antes do primeiro pagamento)
     if (subscription.status === 'ACTIVE' && !isExpired) {
       return {
         hasAccess: true,
         status: 'ACTIVE',
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        daysRemaining: Math.ceil((subscription.currentPeriodEnd - now) / (1000 * 60 * 60 * 24))
+      };
+    }
+
+    if (subscription.status === 'INCOMPLETE' || subscription.status === 'TRIALING') {
+      return {
+        hasAccess: true,
+        status: subscription.status,
         currentPeriodEnd: subscription.currentPeriodEnd,
         daysRemaining: Math.ceil((subscription.currentPeriodEnd - now) / (1000 * 60 * 60 * 24))
       };

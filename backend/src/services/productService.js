@@ -122,21 +122,23 @@ class ProductService {
   }
 
   async getTopProdutos(tenantId, limit = 5) {
+    // Buscar produtos com contagem de itens de pedido
     const products = await prisma.product.findMany({
       where: { tenantId },
       include: {
         _count: { select: { orderItems: true } }
       },
-      orderBy: {
-        orderItems: { _count: 'desc' }
-      },
-      take: limit
+      take: 100 // Buscar mais para ordenar em memória
     });
 
-    return products.map(p => ({
-      nome: p.name,
-      total_vendas: p._count.orderItems,
-    }));
+    // Ordenar por total de vendas (descendente) em memória
+    return products
+      .sort((a, b) => b._count.orderItems - a._count.orderItems)
+      .slice(0, limit)
+      .map(p => ({
+        nome: p.name,
+        total_vendas: p._count.orderItems,
+      }));
   }
 }
 

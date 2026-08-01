@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "postinstall": "prisma generate",
     "migrate": "node src/config/db.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -37,5 +38,8 @@
   "devDependencies": {
     "nodemon": "^3.0.1",
     "prisma": "^6.6.0"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   }
 }

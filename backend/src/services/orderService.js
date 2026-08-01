@@ -112,11 +112,11 @@ class OrderService {
 
       for (const item of itens) {
         const product = await tx.product.findUnique({
-          where: { id: item.produto_id }
+          where: { id: item.produtoId }
         });
 
         if (!product || product.tenantId !== tenantId) {
-          throw new Error(`PRODUCT_NOT_FOUND: ${item.produto_id}`);
+          throw new Error(`PRODUCT_NOT_FOUND: ${item.produtoId}`);
         }
 
         if (product.stock < item.quantidade) {

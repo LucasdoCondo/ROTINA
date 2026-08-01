@@ -36,11 +36,6 @@ const getDashboard = async (req, res) => {
         where: { tenantId },
         orderBy: { orderDate: 'desc' },
         take: 5,
-        include: {
-          client: {
-            select: { name: true }
-          }
-        },
         select: {
           id: true,
           totalAmount: true,

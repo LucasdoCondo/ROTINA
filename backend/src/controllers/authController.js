@@ -139,7 +139,9 @@ const login = async (req, res) => {
     }
 
     // Buscar usuário com tenant
-    const user = await prisma.user.findUnique({
+    // NOTA: O email NÃO é único globalmente (é único por tenant: @@unique([tenantId, email]))
+    // Por isso usamos findFirst em vez de findUnique
+    const user = await prisma.user.findFirst({
       where: { email },
       include: {
         tenant: {
@@ -288,7 +290,7 @@ const perfil = async (req, res) => {
             id: true,
             name: true,
             plan: true,
-            subscription: {
+            subscriptions: {
               select: {
                 status: true,
                 currentPeriodEnd: true
