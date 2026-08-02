@@ -51,12 +51,44 @@ app.use(pinoHttp({
 // Security middleware
 app.use(helmet());
 
-// CORS
+// CORS — aceita múltiplas origens (localhost + Vercel + previews)
 const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
-app.use(cors({
-  origin: corsOrigin,
-  credentials: true,
-}));
+
+function corsOptions() {
+  const allowedOrigins = [
+    corsOrigin,
+    'https://rotina-sjlu.vercel.app',
+    'https://rotina-sjlu-git-*.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173',
+  ];
+
+  return {
+    origin: (origin, callback) => {
+      // Permitir requisições sem origin (Postman, health checks)
+      if (!origin) return callback(null, true);
+
+      // Verificar se a origin está na lista ou corresponde ao padrão
+      const isAllowed = allowedOrigins.some((allowed) => {
+        if (allowed.includes('*')) {
+          const regex = new RegExp('^' + allowed.replace(/\*/g, '.*') + '$');
+          return regex.test(origin);
+        }
+        return origin === allowed;
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        logger.warn({ origin }, 'CORS bloqueou requisição');
+        callback(new Error('Origin não permitida pelo CORS'));
+      }
+    },
+    credentials: true,
+  };
+}
+
+app.use(cors(corsOptions()));
 
 // Sentry request handler (middleware de captura de erros)
 // Só ativa se SENTRY_DSN estiver configurado

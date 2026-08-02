@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// Em produção (Vercel), usa URL relativa para evitar CORS
+// Em desenvolvimento, usa a URL do backend local
+const API_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
 
 // Criar instância do axios
 const api = axios.create({
