@@ -1,0 +1,106 @@
+# =============================================================
+#  ROTINA — Ambiente de desenvolvimento completo (Docker Compose)
+#
+#  Serviços:
+#    postgres   — PostgreSQL 16 (dados persistentes)
+#    redis      — cache/sessões/rate-limit (opcional no código)
+#    backend    — Node.js + Express (API /api/v1)
+#
+#  Credenciais (idênticas ao `backend/.env`):
+#    DATABASE_URL=postgresql://rotina:rotina@localhost:5432/rotina_dev?schema=public
+#    REDIS_URL=redis://localhost:6379
+#
+#  Uso (a partir da raiz):
+#    docker compose up -d           # sobe tudo
+#    docker compose up -d postgres redis  # só infraestrutura
+#    docker compose ps              # estado + healthcheck
+#    docker compose logs -f backend # logs da API
+#    docker compose down            # para e remove containers
+#    docker compose down -v         # idem + apaga dados (volumes)
+#
+#  Atalhos a partir de `backend/`:
+#    npm run db:up | db:down | db:logs | db:setup
+#
+#  Portas configuráveis (evita conflito com serviços locais):
+#    POSTGRES_PORT=5433 docker compose up -d
+#    REDIS_PORT=6380 docker compose up -d
+#    BACKEND_PORT=3001 docker compose up -d
+# =============================================================
+
+name: rotina-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rotina-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rotina
+      POSTGRES_PASSWORD: rotina
+      POSTGRES_DB: rotina_dev
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - rotina_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rotina -d rotina_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: rotina-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - rotina_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rotina-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://rotina:rotina@postgres:5432/rotina_dev?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-insecure-access-secret-change-me-32chars}
+      JWT_ACCESS_TTL: 15m
+      REFRESH_TOKEN_TTL_DAYS: 7
+      CORS_ORIGINS: "*"
+      LOG_LEVEL: debug
+      TRUST_PROXY: 1
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 120
+      AUTH_RATE_LIMIT_WINDOW_MS: 900000
+      AUTH_RATE_LIMIT_MAX: 10
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             npx prisma generate &&
+             npx tsx watch src/server.ts"
+
+volumes:
+  rotina_pgdata:
+  rotina_redisdata:

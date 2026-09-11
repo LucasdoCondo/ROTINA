@@ -1,0 +1,392 @@
+// ─────────────────────────────────────────────────────────────
+//  ROTINA — Esquema de base de datos (PostgreSQL + Prisma ORM)
+//
+//  ESTRATEGIA MULTI-TENANT:
+//  • Todas las tablas de negocio llevan `tenant_id` (UUID) como FK a `tenants`.
+//  • Índices compuestos (tenant_id, ...) enfocados en performance.
+//  • Soft delete: `deleted_at` (NULL = activo). Las queries de repositorio
+//    descartan filas con `deleted_at` mediante el "scope" del cliente Prisma
+//    (ver src/lib/tenant-extension.ts y repositorios).
+//  • NOTA de trade-off: `@@unique([tenantId, email])` impide re-registrar un
+//    email tras borrado lógico; para eso existe el job de purga (hard delete)
+//    del roadmap.
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum TenantPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+  MEMBER
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  BUG
+  FEATURE
+  ACCOUNT
+  ACCESS
+  PAYMENT
+  BILLING
+  QUESTION
+  OTHER
+}
+
+enum CustomerStatus {
+  LEAD
+  PROSPECT
+  ACTIVE
+  INACTIVE
+  CHURNED
+}
+
+enum DealStage {
+  LEAD
+  QUALIFICATION
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum TicketMessageAuthorType {
+  CUSTOMER
+  STAFF
+  SYSTEM
+}
+
+// ---------- Tenant ----------
+
+model Tenant {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String       @db.VarChar(255)
+  slug         String       @unique @db.VarChar(120)
+  domain       String?      @unique @db.VarChar(255)
+  plan         TenantPlan   @default(FREE)
+  status       TenantStatus @default(TRIAL)
+  contactEmail String?      @db.VarChar(255)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  users           User[]
+  refreshTokens   RefreshToken[]
+  tickets         Ticket[]
+  customers       Customer[]
+  deals           Deal[]
+  ticketMessages  TicketMessage[]
+  subscriptions   Subscription[]
+  invitations     Invitation[]
+
+  @@index([status, plan])
+  @@index([slug, deletedAt])
+  @@map("tenants")
+}
+
+// ---------- User ----------
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String     @db.VarChar(255)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  name         String     @db.VarChar(255)
+  role         UserRole   @default(MEMBER)
+  status       UserStatus @default(PENDING)
+  lastLoginAt  DateTime?  @map("last_login_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  refreshTokens RefreshToken[]
+  createdTickets  Ticket[] @relation("TicketCreator")
+  assignedTickets Ticket[] @relation("TicketAssignee")
+  updatedTickets  Ticket[] @relation("TicketUpdatedBy")
+  ownedCustomers Customer[]  @relation("CustomerOwner")
+  ownedDeals     Deal[]      @relation("DealOwner")
+  authoredTicketMessages TicketMessage[] @relation("TicketMessageAuthor")
+  sentInvitations  Invitation[] @relation("InvitationInviter")
+  acceptedInvitation Invitation? @relation("InvitationAcceptingUser")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, id])
+  @@index([tenantId, role, status])
+  @@index([tenantId, deletedAt])
+  @@map("users")
+}
+
+// ---------- RefreshToken (rotativos, revocables, guardados SOLO en hash) ----------
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique @db.VarChar(255) // NUNCA se guarda el token crudo: Argon2id
+  expiresAt DateTime @map("expires_at")
+  userAgent String?  @map("user_agent") @db.VarChar(255)
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  revokedAt DateTime? @map("revoked_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, token])
+  @@index([tenantId, id])
+  @@index([tenantId, userId])
+  @@index([tenantId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ---------- Ticket (Módulo de Chamados) ----------
+
+model Ticket {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @map("tenant_id") @db.Uuid
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  number      Int
+  // Protocolo legível gerado automaticamente: TKT-<ano>-<número 6 dígitos>.
+  protocol    String         @db.VarChar(32)
+  subject     String         @db.VarChar(200)
+  description String         @db.Text
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  category    TicketCategory @default(OTHER)
+
+  // Cliente vinculado (opcional: tickets internos podem não ter cliente).
+  customerId String?   @map("customer_id") @db.Uuid
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  creatorId  String  @map("creator_id") @db.Uuid
+  creator    User    @relation("TicketCreator", fields: [creatorId], references: [id])
+  assigneeId String? @map("assignee_id") @db.Uuid
+  assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  updatedById String? @map("updated_by_id") @db.Uuid
+  updatedBy   User?   @relation("TicketUpdatedBy", fields: [updatedById], references: [id])
+
+  messages TicketMessage[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Número secuencial por tenant (con retry ante P2002 en el servicio)
+  @@unique([tenantId, number])
+  @@unique([tenantId, protocol])
+  @@index([tenantId, id])
+  @@index([tenantId, status, priority])
+  @@index([tenantId, customerId])
+  @@index([tenantId, creatorId])
+  @@index([tenantId, assigneeId])
+  @@index([tenantId, category, deletedAt])
+  @@index([tenantId, createdAt])
+  @@map("tickets")
+}
+
+// ---------- Customer (CRM) ----------
+
+model Customer {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String         @db.VarChar(255)
+  // Email opcional (o tenant pode cadastrar cliente por telefone/documento).
+  // Único por tenant; PostgreSQL permite múltiplos NULL em unique.
+  email     String?        @db.VarChar(255)
+  phone     String?        @db.VarChar(40)
+  company   String?        @db.VarChar(255)
+  document  String?        @db.VarChar(32) // CPF/CNPJ sem máscara
+  // Posição no funil de relacionamento.
+  status    CustomerStatus @default(LEAD)
+  notes     String?        @db.Text
+  // Responsável (AGENT/ADMIN do próprio tenant).
+  ownerId   String?        @map("owner_id") @db.Uuid
+  owner     User?          @relation("CustomerOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  deals   Deal[]
+  tickets Ticket[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, id])
+  @@index([tenantId, status])
+  @@index([tenantId, ownerId])
+  @@index([tenantId, company])
+  @@index([tenantId, deletedAt])
+  @@map("customers")
+}
+
+// ---------- Deal (CRM — Funil de Vendas) ----------
+
+model Deal {
+  id       String    @id @default(uuid()) @db.Uuid
+  tenantId String    @map("tenant_id") @db.Uuid
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId String  @map("customer_id") @db.Uuid
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  title    String    @db.VarChar(200)
+  // Valor monetário exato (evita erros de ponto flutuante).
+  value    Decimal   @db.Decimal(14, 2)
+  currency String    @default("BRL") @db.VarChar(3)
+  stage    DealStage @default(LEAD)
+  // Probabilidade de fechamento (0-100), opcional.
+  probability Int?
+  expectedCloseAt DateTime? @map("expected_close_at")
+  // Preenchido automaticamente ao transicionar para WON/LOST.
+  closedAt DateTime? @map("closed_at")
+
+  ownerId String @map("owner_id") @db.Uuid
+  owner   User   @relation("DealOwner", fields: [ownerId], references: [id])
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([tenantId, id])
+  @@index([tenantId, stage])
+  @@index([tenantId, customerId])
+  @@index([tenantId, ownerId])
+  @@index([tenantId, expectedCloseAt])
+  @@index([tenantId, deletedAt])
+  @@map("deals")
+}
+
+// ---------- TicketMessage (histórico/imutable do chamado) ----------
+
+model TicketMessage {
+  id       String                  @id @default(uuid()) @db.Uuid
+  tenantId String                  @map("tenant_id") @db.Uuid
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticketId String                  @map("ticket_id") @db.Uuid
+  ticket   Ticket                  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  // Autor humano (usuário do tenant) — NULL para mensagens do sistema.
+  authorId String?                 @map("author_id") @db.Uuid
+  author   User?                   @relation("TicketMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  authorType TicketMessageAuthorType @default(STAFF)
+  // true = nota interna (visível só para ADMIN/AGENT); false = resposta pública.
+  isInternal Boolean                @default(false)
+  body     String                  @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, ticketId, createdAt])
+  @@index([tenantId, authorId])
+  @@map("ticket_messages")
+}
+
+// ---------- Subscription (controle de vigência/assinatura do tenant) ----------
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+model Subscription {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  status         SubscriptionStatus @default(TRIALING)
+  plan           TenantPlan       @default(FREE)
+  currentPeriodStart DateTime     @default(now()) @map("current_period_start")
+  currentPeriodEnd   DateTime     @map("current_period_end")
+  trialEndsAt    DateTime?        @map("trial_ends_at")
+  cancelAtPeriodEnd Boolean      @default(false) @map("cancel_at_period_end")
+  canceledAt     DateTime?        @map("canceled_at")
+  externalId     String?          @unique @map("external_id") @db.VarChar(255)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, status])
+  @@index([tenantId, currentPeriodEnd])
+  @@index([status, currentPeriodEnd])
+  @@map("subscriptions")
+}
+
+// ---------- Invitation (convites para membros do tenant) ----------
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model Invitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email          String           @db.VarChar(255)
+  role           UserRole         @default(MEMBER)
+  status         InvitationStatus @default(PENDING)
+  invitedById    String           @map("invited_by_id") @db.Uuid
+  invitedBy      User             @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: Cascade)
+  acceptedById   String?          @unique @map("accepted_by_id") @db.Uuid
+  acceptedBy     User?            @relation("InvitationAcceptingUser", fields: [acceptedById], references: [id], onDelete: SetNull)
+  expiresAt      DateTime         @map("expires_at")
+  acceptedAt     DateTime?        @map("accepted_at")
+  revokedAt      DateTime?        @map("revoked_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, email, status], name: "uq_active_invitation_per_email")
+  @@index([tenantId, status])
+  @@index([tenantId, invitedById])
+  @@index([expiresAt])
+  @@map("invitations")
+}
