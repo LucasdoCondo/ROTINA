@@ -65,6 +65,11 @@ export const Login = () => {
           <p>
             Ainda não tem conta? <Link to="/registrar">Cadastre-se</Link>
           </p>
+          <p className="legal-links">
+            <Link to="/terms">Termos de Uso</Link>
+            {' · '}
+            <Link to="/privacy">Política de Privacidade</Link>
+          </p>
         </div>
       </div>
     </div>

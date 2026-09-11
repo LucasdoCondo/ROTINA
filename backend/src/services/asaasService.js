@@ -46,9 +46,10 @@ const asaasService = {
    * @param {string} params.description - Descrição da assinatura
    * @param {string} params.cycle - 'MONTHLY' | 'YEARLY' | 'WEEKLY'
    * @param {Object} params.metadata - Metadados adicionais
+   * @param {boolean} [params.paymentLink=true] - Gera link de pagamento automático
    * @returns {Promise<Object>} Assinatura criada
    */
-  async createSubscription({ customerId, billingType, value, nextDueDate, description, cycle = 'MONTHLY', metadata = {} }) {
+  async createSubscription({ customerId, billingType, value, nextDueDate, description, cycle = 'MONTHLY', metadata = {}, paymentLink = true }) {
     const { data } = await asaas.post('/subscriptions', {
       customer: customerId,
       billingType,
@@ -58,6 +59,7 @@ const asaasService = {
       cycle,
       maxPayments: null, // Indeterminado (recorrência contínua)
       externalReference: metadata.tenantId,
+      paymentLink, // Gera link de pagamento automático p/ a 1ª cobrança
       fine: {
         value: 2.0, // 2% de multa
         type: 'PERCENTAGE'
@@ -114,13 +116,73 @@ const asaasService = {
   /**
    * Lista cobranças de uma assinatura
    * @param {string} subscriptionId - ID da assinatura
+   * @param {number} [limit=10] - Quantidade máxima de cobranças
    * @returns {Promise<Array>} Lista de cobranças
    */
-  async listPayments(subscriptionId) {
+  async listPayments(subscriptionId, limit = 10) {
     const { data } = await asaas.get('/payments', {
-      params: { subscription: subscriptionId }
+      params: {
+        subscription: subscriptionId,
+        limit,
+        orderBy: 'createdAt',
+        sort: 'desc'
+      }
     });
     return data.data;
+  },
+
+  /**
+   * Obtém a cobrança pendente (a vencer/aguardando) de uma assinatura.
+   * Prioriza status PENDING — é o pagamento que o cliente deve quitar.
+   *
+   * @param {string} subscriptionId - ID da assinatura
+   * @returns {Promise<Object|null>} Cobrança pendente ou null
+   */
+  async getPendingPayment(subscriptionId) {
+    const payments = await this.listPayments(subscriptionId, 10);
+    if (!payments || payments.length === 0) return null;
+
+    const pendingStatuses = ['PENDING', 'SCHEDULED', 'AWAITING_RISK_ANALYSIS', 'APPROVED_BY_RISK_ANALYSIS'];
+    const pending = payments.find((p) => pendingStatuses.includes(p.status));
+    return pending || payments[0];
+  },
+
+  /**
+   * Obtém os dados de pagamento de uma cobrança (QR Code PIX, boleto, etc.)
+   * @param {string} paymentId - ID da cobrança
+   * @returns {Promise<Object>} Dados da cobrança
+   */
+  async getPayment(paymentId) {
+    const { data } = await asaas.get(`/payments/${paymentId}`);
+    return data;
+  },
+
+  /**
+   * Cria um link de pagamento avulso no Asaas.
+   * Usado como fallback para reativação de assinaturas vencidas
+   * ou quando a assinatura não gerou cobrança automática.
+   *
+   * @param {Object} params
+   * @param {string} params.name - Nome do link
+   * @param {string} params.description - Descrição
+   * @param {number} params.value - Valor
+   * @param {string} params.billingType - 'PIX' | 'BOLETO' | 'CREDIT_CARD'
+   * @param {string} params.dueDate - Data de vencimento (YYYY-MM-DD)
+   * @param {string} params.externalReference - Referência externa (tenantId)
+   * @param {string} [params.subscriptionId] - Vincula ao assinatura (paga a 1ª cobrança)
+   * @returns {Promise<Object>} Link de pagamento criado
+   */
+  async createPaymentLink({ name, description, value, billingType, dueDate, externalReference, subscriptionId }) {
+    const { data } = await asaas.post('/payment-links', {
+      name,
+      description,
+      value,
+      billingType,
+      dueDate,
+      externalReference,
+      ...(subscriptionId ? { subscription: subscriptionId } : {}),
+    });
+    return data;
   },
 
   /**
@@ -192,8 +254,19 @@ const asaasService = {
       dueDate: payment?.dueDate,
       confirmedDate: payment?.confirmedDate,
       invoiceUrl: payment?.invoiceUrl,
+      // PIX
       pixQrCode: payment?.pixQrCode,
       pixKey: payment?.pixKey,
+      pix: payment?.pix,
+      // Boleto
+      bankSlip: payment?.bankSlip,
+      // Cartão de crédito (dados parciais)
+      card: payment?.card ? {
+        brand: payment.card.brand,
+        last4: payment.card.last4Digits || payment.card.last4,
+        installmentCount: payment.card.installmentCount,
+        installmentValue: payment.card.installmentValue,
+      } : undefined,
       metadata: payment?.externalReference,
       tenantId: payment?.externalReference
     };

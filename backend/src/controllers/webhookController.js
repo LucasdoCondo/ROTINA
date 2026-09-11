@@ -16,6 +16,25 @@
 
 const asaasService = require('../services/asaasService');
 const { subscriptionService } = require('../services/subscriptionService');
+const { logger } = require('../config/logger');
+
+/**
+ * Convierte el body raw (Buffer) del webhook a objeto JSON.
+ * La ruta usa express.raw() para conservar la firma original
+ * en la validación del gateway.
+ *
+ * @param {*} body - req.body (Buffer, string ou objeto)
+ * @returns {Object} Body parseado como JSON
+ */
+function parseWebhookBody(body) {
+  if (Buffer.isBuffer(body)) {
+    return JSON.parse(body.toString('utf8'));
+  }
+  if (typeof body === 'string' && body.length > 0) {
+    return JSON.parse(body);
+  }
+  return body || {};
+}
 
 const webhookController = {
   /**
@@ -31,44 +50,38 @@ const webhookController = {
    * - PAYMENT_REFUNDED / PAYMENT_CHARGEBACK_REQUESTED → Reembolso
    */
   async asaasWebhook(req, res) {
-    try {
-      // 1. Validar que a requisição veio do Asaas (segurança)
-      if (!asaasService.validateWebhook(req.body)) {
-        console.error('[Webhook] Tentativa de webhook inválido');
-        return res.status(401).json({
-          error: 'Invalid webhook signature'
-        });
-      }
+    const body = parseWebhookBody(req.body);
 
-      // 2. Normalizar o evento para formato interno
-      const event = asaasService.normalizeEvent(req.body);
-      
-      console.log('[Webhook] Evento recebido:', {
+    // 1. Validar que la requisição venga del Asaas (seguridad)
+    if (!asaasService.validateWebhook(body)) {
+      logger.warn('[Webhook] Tentativa de webhook inválido');
+      return res.status(401).json({
+        error: 'Invalid webhook signature'
+      });
+    }
+
+    // 2. Normalizar o evento para formato interno
+    const event = asaasService.normalizeEvent(body);
+
+    logger.info(
+      {
         type: event.type,
         originalEvent: event.originalEvent,
         subscriptionId: event.subscriptionId,
         tenantId: event.tenantId,
-        value: event.value
-      });
+        value: event.value,
+      },
+      '[Webhook] Evento recebido'
+    );
 
-      // 3. Processar o evento (atualizar banco, etc)
-      const result = await subscriptionService.processWebhookEvent(event);
+    // 3. Processar o evento (banco, e-mails, audit logs)
+    const result = await subscriptionService.processWebhookEvent(event);
 
-      // 4. Sempre retornar 200 para o gateway (evita reenvio)
-      return res.status(200).json({
-        received: true,
-        ...result
-      });
-
-    } catch (error) {
-      console.error('[Webhook] Erro ao processar evento:', error);
-      
-      // Mesmo em erro, retornar 200 para não reenviar
-      return res.status(200).json({
-        received: true,
-        error: error.message
-      });
-    }
+    // 4. Sempre retornar 200 para el gateway (evita reenvíos)
+    return res.status(200).json({
+      received: true,
+      ...result
+    });
   },
 
   /**
@@ -77,50 +90,36 @@ const webhookController = {
    * URL: POST /api/webhooks/stripe
    */
   async stripeWebhook(req, res) {
-    try {
-      const signature = req.headers['stripe-signature'];
-      
-      if (!signature) {
-        return res.status(401).json({ error: 'Missing stripe-signature header' });
-      }
+    const signature = req.headers['stripe-signature'];
 
-      // Validação da assinatura digital do Stripe
-      // const event = stripe.webhooks.constructEvent(
-      //   req.body,
-      //   signature,
-      //   process.env.STRIPE_WEBHOOK_SECRET
-      // );
-
-      // Por enquanto, apenas logar o evento
-      console.log('[Stripe Webhook] Evento recebido:', req.body.type);
-
-      return res.status(200).json({ received: true });
-
-    } catch (error) {
-      console.error('[Stripe Webhook] Erro:', error);
-      return res.status(400).json({ error: error.message });
+    if (!signature) {
+      return res.status(401).json({ error: 'Missing stripe-signature header' });
     }
+
+    // Validação da assinatura digital do Stripe
+    // const event = stripe.webhooks.constructEvent(
+    //   req.body,
+    //   signature,
+    //   process.env.STRIPE_WEBHOOK_SECRET
+    // );
+
+    // Por enquanto, solo registrar el evento
+    logger.info({ stripeType: req.body?.type }, '[Stripe Webhook] Evento recebido');
+
+    return res.status(200).json({ received: true });
   },
 
   /**
-   * Endpoint para verificar status da assinatura (usado pelo frontend)
-   * 
-   * URL: GET /api/webhooks/status/:tenantId
+   * Endpoint para verificar status da assinatura del tenant logado.
+   *
+   * URL: GET /api/webhooks/status
+   *
+   * SEGURIDAD: el tenantId NUNCA viene de params/query/body.
+   * Siempre se deriva de req.tenantId (JWT via authenticateToken).
    */
   async checkSubscriptionStatus(req, res) {
-    try {
-      const { tenantId } = req.params;
-      
-      const status = await subscriptionService.checkAccess(tenantId);
-      
-      return res.json(status);
-
-    } catch (error) {
-      console.error('[Webhook] Erro ao verificar status:', error);
-      return res.status(500).json({
-        error: 'Erro ao verificar status da assinatura'
-      });
-    }
+    const status = await subscriptionService.checkAccess(req.tenantId);
+    return res.json(status);
   }
 };
 

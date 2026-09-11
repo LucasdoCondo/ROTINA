@@ -1,7 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('node:crypto');
 const prisma = require('../config/prisma');
-const { logLogin, logLogout } = require('../utils/auditLogger');
+const { logLogin, logLogout, logCreate } = require('../utils/auditLogger');
+const emailService = require('../services/emailService');
 
 // Registrar novo tenant e usuário master
 const registrarTenant = async (req, res) => {
@@ -106,6 +108,7 @@ const registrarTenant = async (req, res) => {
       });
 
       // Criar usuário master
+      const emailVerificationToken = crypto.randomBytes(32).toString('hex');
       const usuario = await tx.user.create({
         data: {
           tenantId: tenant.id,
@@ -113,7 +116,8 @@ const registrarTenant = async (req, res) => {
           email: usuarioEmail,
           password: senhaHash,
           role: 'ADMIN',
-          emailVerified: true,
+          emailVerified: false,
+          emailVerificationToken,
         }
       });
 
@@ -157,6 +161,15 @@ const registrarTenant = async (req, res) => {
         token,
       }
     });
+
+    // 📝 Audit Log: registrar alta del tenant
+    logCreate(result.tenant.id, { id: result.usuario.id, email: result.usuario.email }, 'Tenant', result.tenant, req);
+
+    // 📧 Welcome e-mail com token de verificación (assíncrono — nunca bloquea el registro)
+    emailService.sendWelcome(
+      { name: result.usuario.name, email: result.usuario.email },
+      emailVerificationToken
+    );
 
     res.status(201).json({
       message: 'Empresa e usuário cadastrados com sucesso',
@@ -382,6 +395,190 @@ const perfil = async (req, res) => {
   }
 };
 
+// Verificar e-mail do usuário (link do WelcomeEmail.jsx)
+// GET /api/auth/verificar-email?token=...
+const verificarEmail = async (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({
+      message: 'Token de verificação é obrigatório',
+      code: 'MISSING_TOKEN',
+    });
+  }
+
+  // Buscar usuário pelo token de verificação (único globalmente)
+  const user = await prisma.user.findFirst({
+    where: { emailVerificationToken: token },
+  });
+
+  if (!user) {
+    return res.status(404).json({
+      message: 'Token de verificação inválido ou já utilizado',
+      code: 'INVALID_VERIFICATION_TOKEN',
+    });
+  }
+
+  // Marcar e-mail como verificado e limpar token
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerified: true,
+      emailVerificationToken: null,
+      emailVerifiedAt: new Date(),
+    },
+  });
+
+  res.json({
+    success: true,
+    message: 'E-mail verificado com sucesso. Sua conta está completa!',
+    email: user.email,
+  });
+};
+
+// Aceitar convite de membro da equipe (link do InviteEmail.jsx)
+// POST /api/auth/aceitar-convite  { token, nome, senha }
+const aceitarConvite = async (req, res) => {
+  const { token, nome, senha } = req.body;
+
+  if (!token) {
+    return res.status(400).json({
+      message: 'Token de convite é obrigatório',
+      code: 'MISSING_TOKEN',
+    });
+  }
+
+  if (!nome || nome.trim().length < 2) {
+    return res.status(400).json({
+      message: 'Nome deve ter pelo menos 2 caracteres',
+      code: 'INVALID_NAME',
+    });
+  }
+
+  if (!senha || senha.length < 6) {
+    return res.status(400).json({
+      message: 'Senha deve ter no mínimo 6 caracteres',
+      code: 'INVALID_PASSWORD',
+    });
+  }
+
+  // Buscar convite pelo token
+  const invite = await prisma.invite.findUnique({
+    where: { token },
+  });
+
+  if (!invite) {
+    return res.status(404).json({
+      message: 'Convite inválido',
+      code: 'INVITE_NOT_FOUND',
+    });
+  }
+
+  if (invite.acceptedAt) {
+    return res.status(409).json({
+      message: 'Este convite já foi utilizado',
+      code: 'INVITE_ALREADY_ACCEPTED',
+    });
+  }
+
+  if (invite.expiresAt < new Date()) {
+    return res.status(410).json({
+      message: 'Este convite expirou. Solicite um novo ao administrador.',
+      code: 'INVITE_EXPIRED',
+    });
+  }
+
+  // Validar que o tenant ainda existe e está ativo
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: invite.tenantId },
+    select: { id: true, active: true },
+  });
+
+  if (!tenant) {
+    return res.status(404).json({
+      message: 'Organização não encontrada',
+      code: 'TENANT_NOT_FOUND',
+    });
+  }
+
+  if (!tenant.active) {
+    return res.status(403).json({
+      message: 'Organização desativada',
+      code: 'TENANT_DISABLED',
+    });
+  }
+
+  // Não permitir duplicados por tenant
+  const existingUser = await prisma.user.findUnique({
+    where: { tenantId_email: { tenantId: invite.tenantId, email: invite.email } },
+  });
+
+  if (existingUser) {
+    return res.status(409).json({
+      message: 'Já existe uma conta com este e-mail nesta organização. Faça login.',
+      code: 'USER_ALREADY_EXISTS',
+    });
+  }
+
+  // Hash da senha
+  const salt = await bcrypt.genSalt(10);
+  const senhaHash = await bcrypt.hash(senha, salt);
+
+  // Criar usuário com o cargo do convite + marcar convite como aceito
+  const result = await prisma.$transaction(async (tx) => {
+    const usuario = await tx.user.create({
+      data: {
+        tenantId: invite.tenantId,
+        name: nome,
+        email: invite.email.toLowerCase(),
+        password: senhaHash,
+        role: invite.role,
+        emailVerified: true, // O convite por e-mail já confirma a identidade
+        emailVerifiedAt: new Date(),
+      },
+    });
+
+    await tx.invite.update({
+      where: { id: invite.id },
+      data: { acceptedAt: new Date() },
+    });
+
+    return usuario;
+  });
+
+  // Generar token JWT y abrir sesión (auto-login)
+  const authToken = jwt.sign(
+    { id: result.id, tenantId: invite.tenantId, email: result.email },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+
+  await prisma.onlineSession.create({
+    data: {
+      userId: result.id,
+      tenantId: invite.tenantId,
+      token: authToken,
+    },
+  });
+
+  // 📝 Audit Log: registro del alta del usuario vía convite
+  logCreate(invite.tenantId, { id: result.id, email: result.email }, 'User', result, req);
+
+  res.status(201).json({
+    message: 'Convite aceito! Você agora faz parte da organização.',
+    usuario: {
+      id: result.id,
+      nome: result.name,
+      email: result.email,
+      cargo: result.role,
+      tenant: {
+        id: invite.tenantId,
+      },
+    },
+    token: authToken,
+  });
+};
+
 // Atualizar perfil
 const atualizarPerfil = async (req, res) => {
   try {
@@ -420,4 +617,6 @@ module.exports = {
   logout,
   perfil,
   atualizarPerfil,
+  verificarEmail,
+  aceitarConvite,
 };

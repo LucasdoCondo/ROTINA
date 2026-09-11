@@ -62,6 +62,15 @@ export const authService = {
   logout: () => api.post('/auth/logout'),
   perfil: () => api.get('/auth/perfil'),
   atualizarPerfil: (dados) => api.put('/auth/perfil', dados),
+  verificarEmail: (token) => api.get(`/auth/verificar-email?token=${encodeURIComponent(token)}`),
+  aceitarConvite: (dados) => api.post('/auth/aceitar-convite', dados),
+};
+
+// Serviços de Convites (membresía de equipo)
+export const inviteService = {
+  listar: (params = {}) => api.get('/invites', { params }),
+  convidar: (dados) => api.post('/invites', dados),
+  revocar: (id) => api.delete(`/invites/${id}`),
 };
 
 // Serviços de Dashboard

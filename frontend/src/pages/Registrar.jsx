@@ -293,6 +293,11 @@ export const Registrar = () => {
           <p>
             Já tem conta? <Link to="/login">Fazer login</Link>
           </p>
+          <p className="legal-links">
+            <Link to="/terms">Termos de Uso</Link>
+            {' · '}
+            <Link to="/privacy">Política de Privacidade</Link>
+          </p>
         </div>
       </div>
     </div>

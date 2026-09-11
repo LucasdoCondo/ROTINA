@@ -13,6 +13,26 @@
 
 const prisma = require('../config/prisma');
 const asaasService = require('./asaasService');
+const emailService = require('./emailService');
+const { logger } = require('../config/logger');
+const { logAudit } = require('../utils/auditLogger');
+
+// ============================================
+// Métodos de pagamento suportados (Asaas)
+// ============================================
+const BILLING_TYPES = ['PIX', 'BOLETO', 'CREDIT_CARD'];
+
+/**
+ * Suma dias a uma data (evita mutar o objeto original).
+ * @param {Date} date - Data base
+ * @param {number} days - Dias a adicionar
+ * @returns {Date} Nova data
+ */
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
 
 // ============================================
 // Planos Disponíveis
@@ -118,6 +138,11 @@ const subscriptionService = {
       throw new Error('PLAN_NOT_FOUND');
     }
 
+    // Validar método de pagamento
+    if (!BILLING_TYPES.includes(billingType)) {
+      throw new Error('INVALID_BILLING_TYPE');
+    }
+
     // 1. Verificar se já existe assinatura
     const existingSubscription = await prisma.subscription.findUnique({
       where: { tenantId: tenant.id }
@@ -136,26 +161,87 @@ const subscriptionService = {
     }
 
     // 3. Calcular próximo vencimento (30 dias a partir de hoje)
-    const nextDueDate = new Date();
-    nextDueDate.setDate(nextDueDate.getDate() + 30);
+    const nextDueDate = addDays(new Date(), 30);
     const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
 
-    // 4. Criar assinatura no Asaas
-    const asaasSubscription = await asaasService.createSubscription({
-      customerId: asaasCustomerId,
-      billingType,
-      value: plan.price,
-      nextDueDate: nextDueDateStr,
-      description: `Plano ${plan.name} - ROTINA`,
-      cycle: 'MONTHLY',
-      metadata: { tenantId: tenant.id, planId }
-    });
+    // 4. Reutilizar ou criar assinatura remota no Asaas
+    let asaasSubscription = null;
+    const existingAsaasSubscriptionId = existingSubscription?.asaasSubscriptionId;
 
-    // 5. Calcular período atual
-    const currentPeriodEnd = new Date();
-    currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
+    if (existingSubscription && existingAsaasSubscriptionId && existingSubscription.status !== 'CANCELED') {
+      // Reutilizar a assinatura existente (INCOMPLETE / PAST_DUE / TRIALING)
+      asaasSubscription = { id: existingAsaasSubscriptionId };
+      try {
+        const remote = await asaasService.getSubscription(existingAsaasSubscriptionId);
+        asaasSubscription = remote;
+      } catch (err) {
+        logger.warn({ err: err.message }, '[Asaas] Não foi possível ler a assinatura remota; usa-se o ID local');
+      }
+    } else {
+      // Cancelar a assinatura anterior (se existe e não se reutiliza)
+      if (existingAsaasSubscriptionId) {
+        try {
+          await asaasService.cancelSubscription(existingAsaasSubscriptionId);
+        } catch (err) {
+          logger.warn({ err: err.message }, '[Asaas] Não foi possível cancelar a assinatura anterior');
+        }
+      }
 
-    // 6. Salvar/atualizar no banco
+      // Criar nova assinatura no Asaas com o método de pagamento escolhido
+      asaasSubscription = await asaasService.createSubscription({
+        customerId: asaasCustomerId,
+        billingType,
+        value: plan.price,
+        nextDueDate: nextDueDateStr,
+        description: `Plano ${plan.name} - ROTINA`,
+        cycle: 'MONTHLY',
+        metadata: { tenantId: tenant.id, planId }
+      });
+    }
+
+    // 5. Obtener la cobranza pendiente (link de pagamento / QR PIX / boleto)
+    let payment = null;
+    try {
+      payment = await asaasService.getPendingPayment(asaasSubscription.id);
+    } catch (err) {
+      logger.warn({ err: err.message }, '[Asaas] Não foi possível obter a cobranza pendiente');
+    }
+
+    // Fallback: criar um Payment Link manual si não existe cobranza automática
+    if (!payment) {
+      try {
+        const link = await asaasService.createPaymentLink({
+          name: `Plano ${plan.name} - ROTINA`,
+          description: `Assinatura ${plan.name} · ${billingType}`,
+          value: plan.price,
+          billingType,
+          dueDate: nextDueDateStr,
+          externalReference: tenant.id,
+          subscriptionId: asaasSubscription.id,
+        });
+        payment = {
+          id: link.id,
+          invoiceUrl: link.url,
+          pixQrCode: link.pixQrCode,
+          pixKey: link.pixKey,
+          bankSlip: link.bankSlip,
+        };
+      } catch (err) {
+        logger.warn({ err: err.message }, '[Asaas] Não foi possível criar payment link; usa-se invoiceUrl da assinatura');
+        payment = {
+          id: null,
+          invoiceUrl: asaasSubscription.paymentLink || asaasSubscription.invoiceUrl,
+          pixQrCode: null,
+          pixKey: null,
+          bankSlip: null,
+        };
+      }
+    }
+
+    // 6. Calcular período atual (30 dias desde hoje)
+    const currentPeriodEnd = addDays(new Date(), 30);
+
+    // 7. Salvar/atualizar no banco (sempre INCOMPLETE até chegar o webhook)
     const subscription = await prisma.subscription.upsert({
       where: { tenantId: tenant.id },
       update: {
@@ -164,8 +250,9 @@ const subscriptionService = {
         asaasSubscriptionId: asaasSubscription.id,
         status: 'INCOMPLETE',
         planId,
+        billingType,
         currentPeriodEnd,
-        lastInvoiceUrl: asaasSubscription.invoiceUrl || null
+        lastInvoiceUrl: payment?.invoiceUrl || asaasSubscription.invoiceUrl || null
       },
       create: {
         tenantId: tenant.id,
@@ -174,26 +261,37 @@ const subscriptionService = {
         asaasSubscriptionId: asaasSubscription.id,
         status: 'INCOMPLETE',
         planId,
+        billingType,
         currentPeriodEnd
       }
     });
 
-    // 7. Atualizar plano do tenant
+    // 8. Atualizar plano do tenant
     await prisma.tenant.update({
       where: { id: tenant.id },
       data: { plan: planId }
     });
 
-    return {
-      subscription,
-      checkout: {
-        id: asaasSubscription.id,
-        invoiceUrl: asaasSubscription.invoiceUrl,
-        billingType,
-        value: plan.price,
-        nextDueDate: nextDueDateStr
-      }
+    // Construir payload de checkout específico por método de pagamento
+    const checkout = {
+      id: asaasSubscription.id,
+      paymentId: payment?.id,
+      invoiceUrl: payment?.invoiceUrl || asaasSubscription.invoiceUrl,
+      billingType,
+      value: plan.price,
+      nextDueDate: nextDueDateStr,
+      pixQrCode: billingType === 'PIX' ? (payment?.pixQrCode || payment?.pix?.qrCode) : null,
+      pixKey: billingType === 'PIX' ? (payment?.pixKey || payment?.pix?.key) : null,
+      bankSlipUrl: billingType === 'BOLETO' ? (payment?.bankSlip?.url || payment?.bankSlip) : null,
+      cardInstallments: billingType === 'CREDIT_CARD' ? (payment?.card?.installmentCount || 1) : null,
     };
+
+    logger.info(
+      { tenantId: tenant.id, planId, billingType, hasInvoice: !!checkout.invoiceUrl },
+      '[Checkout] Checkout criado'
+    );
+
+    return { subscription, checkout };
   },
 
   /**
@@ -206,10 +304,10 @@ const subscriptionService = {
    * @returns {Promise<Object>} Resultado do processamento
    */
   async processWebhookEvent(event) {
-    console.log(`[Webhook] Processando evento: ${event.type}`, {
-      subscriptionId: event.subscriptionId,
-      tenantId: event.tenantId
-    });
+    logger.info(
+      { eventType: event.type, subscriptionId: event.subscriptionId, tenantId: event.tenantId },
+      '[Webhook] Processando evento'
+    );
 
     switch (event.type) {
       // ═══════════════════════════════════════════════
@@ -260,46 +358,88 @@ const subscriptionService = {
       }
 
       default:
-        console.log(`[Webhook] Evento não mapeado: ${event.type}`);
+        logger.info({ eventType: event.type }, '[Webhook] Evento não mapeado');
         return { received: true, unhandled: event.type };
     }
+  },
+
+  /**
+   * Resuelve o tenantId a partir do evento.
+   * Prioridade: metadata do gateway (externalReference) → lookup por subscriptionId.
+   * NUNCA recebe tenantId como input confiable do cliente.
+   *
+   * @param {Object} event - Evento normalizado
+   * @param {string} [subscriptionId] - ID da assinatura no gateway
+   * @param {string} [tenantIdHint] - TenantId vindo do metadata do gateway
+   * @returns {Promise<string|null>}
+   */
+  async _resolveTenantFromEvent(event, subscriptionId, tenantIdHint) {
+    if (tenantIdHint) return tenantIdHint;
+
+    if (subscriptionId) {
+      const sub = await prisma.subscription.findFirst({
+        where: {
+          OR: [
+            { asaasSubscriptionId: subscriptionId },
+            { stripeSubscriptionId: subscriptionId },
+          ],
+        },
+        select: { tenantId: true },
+      });
+      return sub?.tenantId;
+    }
+
+    return null;
+  },
+
+  /**
+   * Obtiene el currentPeriodEnd actual de la suscripción de um tenant
+   * @param {string} tenantId
+   * @returns {Promise<Date|null>}
+   */
+  async _getPeriodEnd(tenantId) {
+    const sub = await prisma.subscription.findUnique({
+      where: { tenantId },
+      select: { currentPeriodEnd: true },
+    });
+    return sub?.currentPeriodEnd;
   },
 
   /**
    * Processa pagamento confirmado com sucesso
    */
   async _handlePaymentSucceeded(event) {
-    const { subscriptionId, tenantId, confirmedDate } = event;
+    const { subscriptionId, tenantId, confirmedDate, invoiceUrl } = event;
 
-    // Se não veio o tenantId no metadata, buscar pelo subscriptionId
-    let targetTenantId = tenantId;
-
-    if (!targetTenantId && subscriptionId) {
-      const sub = await prisma.subscription.findUnique({
-        where: { asaasSubscriptionId: subscriptionId }
-      });
-      targetTenantId = sub?.tenantId;
-    }
-
+    const targetTenantId = await this._resolveTenantFromEvent(event, subscriptionId, tenantId);
     if (!targetTenantId) {
-      console.error('[Webhook] Tenant não identificado para o pagamento');
+      logger.error('[Webhook] Tenant não identificado para o pagamento');
       return { received: true, error: 'TENANT_NOT_FOUND' };
     }
 
-    // Calcular novo período (30 dias a partir de hoje ou da confirmação)
+    // Calcular novo período (30 dias) a partir da confirmação,
+    // garantindo que NUNCA seja menor que o período anterior (evita regressão)
     const periodStart = confirmedDate ? new Date(confirmedDate) : new Date();
-    const currentPeriodEnd = new Date(periodStart);
-    currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
+    const previousPeriodEnd = await this._getPeriodEnd(targetTenantId);
+    const basePeriod = previousPeriodEnd && new Date(previousPeriodEnd) > periodStart
+      ? new Date(previousPeriodEnd)
+      : periodStart;
+    const currentPeriodEnd = addDays(basePeriod, 30);
+
+    // Estado anterior para audit log
+    const previous = await prisma.subscription.findUnique({
+      where: { tenantId: targetTenantId }
+    });
 
     // Atualizar assinatura para ACTIVE
-    const subscription = await prisma.subscription.update({
+    await prisma.subscription.update({
       where: { tenantId: targetTenantId },
       data: {
         status: 'ACTIVE',
         currentPeriodEnd,
         paymentAttempts: 0,
         lastPaymentAttempt: new Date(),
-        lastInvoiceUrl: event.invoiceUrl || undefined
+        lastInvoiceUrl: invoiceUrl || previous?.lastInvoiceUrl
       }
     });
 
@@ -309,8 +449,42 @@ const subscriptionService = {
       data: { active: true }
     });
 
-    console.log(`[Webhook] ✅ Assinatura ativada para tenant ${targetTenantId}`);
-    
+    // 📝 Audit Log (campos sensibles sanitizados pelo auditLogger)
+    logAudit({
+      tenantId: targetTenantId,
+      userId: null,
+      userEmail: 'webhook@asaas',
+      action: 'UPDATE',
+      entity: 'Subscription',
+      entityId: subscriptionId || previous?.id,
+      oldValues: previous
+        ? { status: previous.status, currentPeriodEnd: previous.currentPeriodEnd, paymentAttempts: previous.paymentAttempts }
+        : undefined,
+      newValues: { status: 'ACTIVE', currentPeriodEnd, billingType: event.billingType || undefined },
+    });
+
+    // 📧 Fatura paga (assíncrono — nunca deve bloquear o webhook)
+    try {
+      const tenant = await prisma.tenant.findUnique({ where: { id: targetTenantId } });
+      const sub = await prisma.subscription.findUnique({ where: { tenantId: targetTenantId } });
+      if (tenant && sub) {
+        const plan = PLANS[sub.planId];
+        emailService.sendInvoice(tenant, {
+          id: event.paymentId || sub.id,
+          planName: plan?.name || sub.planId,
+          amount: event.value || plan?.price,
+          dueDate: event.dueDate || new Date().toLocaleDateString('pt-BR'),
+          status: 'paid',
+          invoiceUrl: invoiceUrl || sub.lastInvoiceUrl,
+          billingType: event.billingType || sub.billingType || 'PIX',
+        });
+      }
+    } catch (err) {
+      logger.warn({ err: err.message }, '[Webhook] Não foi possível enviar fatura paga');
+    }
+
+    logger.info({ tenantId: targetTenantId }, '[Webhook] ✅ Assinatura ativada');
+
     return {
       received: true,
       action: 'SUBSCRIPTION_ACTIVATED',
@@ -325,31 +499,60 @@ const subscriptionService = {
   async _handlePaymentPastDue(event) {
     const { subscriptionId, tenantId } = event;
 
-    let targetTenantId = tenantId;
-
-    if (!targetTenantId && subscriptionId) {
-      const sub = await prisma.subscription.findUnique({
-        where: { asaasSubscriptionId: subscriptionId }
-      });
-      targetTenantId = sub?.tenantId;
-    }
-
+    const targetTenantId = await this._resolveTenantFromEvent(event, subscriptionId, tenantId);
     if (!targetTenantId) {
       return { received: true, error: 'TENANT_NOT_FOUND' };
     }
 
-    // Marcar como PAST_DUE - o sistema ainda funciona
-    // mas o middleware validateSubscription vai bloquear
-    await prisma.subscription.update({
+    // Estado anterior para audit log
+    const previous = await prisma.subscription.findUnique({
+      where: { tenantId: targetTenantId }
+    });
+
+    // Marcar como PAST_DUE — o middleware validateSubscription bloquea o acesso
+    const updated = await prisma.subscription.update({
       where: { tenantId: targetTenantId },
       data: {
         status: 'PAST_DUE',
         paymentAttempts: { increment: 1 },
-        lastPaymentAttempt: new Date()
+        lastPaymentAttempt: new Date(),
+        lastInvoiceUrl: event.invoiceUrl || previous?.lastInvoiceUrl || undefined
       }
     });
 
-    console.log(`[Webhook] ⚠️ Pagamento vencido para tenant ${targetTenantId}`);
+    // 📝 Audit Log
+    logAudit({
+      tenantId: targetTenantId,
+      userId: null,
+      userEmail: 'webhook@asaas',
+      action: 'UPDATE',
+      entity: 'Subscription',
+      entityId: subscriptionId || previous?.id,
+      oldValues: previous
+        ? { status: previous.status, paymentAttempts: previous.paymentAttempts }
+        : undefined,
+      newValues: { status: 'PAST_DUE', paymentAttempts: updated.paymentAttempts },
+    });
+
+    // 📧 Alerta de pagamento não aprovado (assíncrono)
+    try {
+      const tenant = await prisma.tenant.findUnique({ where: { id: targetTenantId } });
+      const sub = await prisma.subscription.findUnique({ where: { tenantId: targetTenantId } });
+      if (tenant && sub) {
+        const plan = PLANS[sub.planId];
+        emailService.sendPaymentFailed(tenant, {
+          planId: plan?.name || sub.planId,
+          value: event.value || plan?.price,
+          dueDate: event.dueDate,
+          lastInvoiceUrl: sub.lastInvoiceUrl,
+          paymentAttempts: sub.paymentAttempts || 1,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err: err.message }, '[Webhook] Não foi possível enviar alerta de pagamento');
+    }
+
+    logger.info({ tenantId: targetTenantId }, '[Webhook] ⚠️ Pagamento vencido');
 
     return {
       received: true,
@@ -364,18 +567,15 @@ const subscriptionService = {
   async _handleSubscriptionCanceled(event) {
     const { subscriptionId, tenantId } = event;
 
-    let targetTenantId = tenantId;
-
-    if (!targetTenantId && subscriptionId) {
-      const sub = await prisma.subscription.findUnique({
-        where: { asaasSubscriptionId: subscriptionId }
-      });
-      targetTenantId = sub?.tenantId;
-    }
-
+    const targetTenantId = await this._resolveTenantFromEvent(event, subscriptionId, tenantId);
     if (!targetTenantId) {
       return { received: true, error: 'TENANT_NOT_FOUND' };
     }
+
+    // Estado anterior para audit log
+    const previous = await prisma.subscription.findUnique({
+      where: { tenantId: targetTenantId }
+    });
 
     // Cancelar assinatura e desativar tenant
     await prisma.subscription.update({
@@ -389,7 +589,19 @@ const subscriptionService = {
       data: { active: false }
     });
 
-    console.log(`[Webhook] 🚫 Assinatura cancelada para tenant ${targetTenantId}`);
+    // 📝 Audit Log
+    logAudit({
+      tenantId: targetTenantId,
+      userId: null,
+      userEmail: 'webhook@asaas',
+      action: 'UPDATE',
+      entity: 'Subscription',
+      entityId: subscriptionId || previous?.id,
+      oldValues: previous ? { status: previous.status } : undefined,
+      newValues: { status: 'CANCELED', tenantActive: false },
+    });
+
+    logger.info({ tenantId: targetTenantId }, '[Webhook] 🚫 Assinatura cancelada');
 
     return {
       received: true,
@@ -404,21 +616,16 @@ const subscriptionService = {
   async _handleSubscriptionActivated(event) {
     const { subscriptionId, tenantId } = event;
 
-    let targetTenantId = tenantId;
-
-    if (!targetTenantId && subscriptionId) {
-      const sub = await prisma.subscription.findUnique({
-        where: { asaasSubscriptionId: subscriptionId }
-      });
-      targetTenantId = sub?.tenantId;
-    }
-
+    const targetTenantId = await this._resolveTenantFromEvent(event, subscriptionId, tenantId);
     if (!targetTenantId) {
       return { received: true, error: 'TENANT_NOT_FOUND' };
     }
 
-    const currentPeriodEnd = new Date();
-    currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
+    const previous = await prisma.subscription.findUnique({
+      where: { tenantId: targetTenantId }
+    });
+
+    const currentPeriodEnd = addDays(new Date(), 30);
 
     await prisma.subscription.update({
       where: { tenantId: targetTenantId },
@@ -427,6 +634,20 @@ const subscriptionService = {
         currentPeriodEnd
       }
     });
+
+    // 📝 Audit Log
+    logAudit({
+      tenantId: targetTenantId,
+      userId: null,
+      userEmail: 'webhook@asaas',
+      action: 'UPDATE',
+      entity: 'Subscription',
+      entityId: subscriptionId || previous?.id,
+      oldValues: previous ? { status: previous.status } : undefined,
+      newValues: { status: 'ACTIVE', currentPeriodEnd },
+    });
+
+    logger.info({ tenantId: targetTenantId }, '[Webhook] ♻️ Assinatura ativada');
 
     return {
       received: true,
@@ -441,23 +662,35 @@ const subscriptionService = {
   async _handleSubscriptionSuspended(event) {
     const { subscriptionId, tenantId } = event;
 
-    let targetTenantId = tenantId;
-
-    if (!targetTenantId && subscriptionId) {
-      const sub = await prisma.subscription.findUnique({
-        where: { asaasSubscriptionId: subscriptionId }
-      });
-      targetTenantId = sub?.tenantId;
-    }
-
+    const targetTenantId = await this._resolveTenantFromEvent(event, subscriptionId, tenantId);
     if (!targetTenantId) {
       return { received: true, error: 'TENANT_NOT_FOUND' };
     }
 
+    const previous = await prisma.subscription.findUnique({
+      where: { tenantId: targetTenantId }
+    });
+
+    // Suspensão por inadimplência/administrativa → INCOMPLETE.
+    // O middleware validateSubscription bloquea este status.
     await prisma.subscription.update({
       where: { tenantId: targetTenantId },
-      data: { status: 'PAST_DUE' }
+      data: { status: 'INCOMPLETE' }
     });
+
+    // 📝 Audit Log
+    logAudit({
+      tenantId: targetTenantId,
+      userId: null,
+      userEmail: 'webhook@asaas',
+      action: 'UPDATE',
+      entity: 'Subscription',
+      entityId: subscriptionId || previous?.id,
+      oldValues: previous ? { status: previous.status } : undefined,
+      newValues: { status: 'INCOMPLETE' },
+    });
+
+    logger.info({ tenantId: targetTenantId }, '[Webhook] ⛔ Assinatura suspensa (INCOMPLETE)');
 
     return {
       received: true,
@@ -472,18 +705,14 @@ const subscriptionService = {
   async _handlePaymentRefunded(event) {
     const { subscriptionId, tenantId } = event;
 
-    let targetTenantId = tenantId;
-
-    if (!targetTenantId && subscriptionId) {
-      const sub = await prisma.subscription.findUnique({
-        where: { asaasSubscriptionId: subscriptionId }
-      });
-      targetTenantId = sub?.tenantId;
-    }
-
+    const targetTenantId = await this._resolveTenantFromEvent(event, subscriptionId, tenantId);
     if (!targetTenantId) {
       return { received: true, error: 'TENANT_NOT_FOUND' };
     }
+
+    const previous = await prisma.subscription.findUnique({
+      where: { tenantId: targetTenantId }
+    });
 
     // Em caso de chargeback, cancelar imediatamente
     await prisma.subscription.update({
@@ -496,7 +725,19 @@ const subscriptionService = {
       data: { active: false }
     });
 
-    console.log(`[Webhook] 🔄 Chargeback/reembolso para tenant ${targetTenantId}`);
+    // 📝 Audit Log
+    logAudit({
+      tenantId: targetTenantId,
+      userId: null,
+      userEmail: 'webhook@asaas',
+      action: 'UPDATE',
+      entity: 'Subscription',
+      entityId: subscriptionId || previous?.id,
+      oldValues: previous ? { status: previous.status } : undefined,
+      newValues: { status: 'CANCELED', reason: 'REFUND_CHARGEBACK', tenantActive: false },
+    });
+
+    logger.info({ tenantId: targetTenantId }, '[Webhook] 🔄 Chargeback/reembolso');
 
     return {
       received: true,
@@ -534,6 +775,18 @@ const subscriptionService = {
       data: { active: false }
     });
 
+    // 📝 Audit Log (cancelamento manual por ADMIN)
+    logAudit({
+      tenantId,
+      userId: null,
+      userEmail: 'manual-admin',
+      action: 'UPDATE',
+      entity: 'Subscription',
+      entityId: subscription.id,
+      oldValues: { status: subscription.status, planId: subscription.planId },
+      newValues: { status: 'CANCELED', reason: 'MANUAL_CANCEL' },
+    });
+
     return { success: true };
   },
 
@@ -565,6 +818,7 @@ const subscriptionService = {
         hasAccess: true,
         status: 'ACTIVE',
         currentPeriodEnd: subscription.currentPeriodEnd,
+        billingType: subscription.billingType,
         daysRemaining: Math.ceil((subscription.currentPeriodEnd - now) / (1000 * 60 * 60 * 24))
       };
     }
@@ -574,6 +828,7 @@ const subscriptionService = {
         hasAccess: true,
         status: subscription.status,
         currentPeriodEnd: subscription.currentPeriodEnd,
+        billingType: subscription.billingType,
         daysRemaining: Math.ceil((subscription.currentPeriodEnd - now) / (1000 * 60 * 60 * 24))
       };
     }
@@ -582,6 +837,7 @@ const subscriptionService = {
       return {
         hasAccess: false,
         status: 'PAST_DUE',
+        billingType: subscription.billingType,
         message: 'Pagamento pendente. Acesse o link de fatura para regularizar.',
         invoiceUrl: subscription.lastInvoiceUrl
       };
@@ -591,6 +847,7 @@ const subscriptionService = {
       return {
         hasAccess: false,
         status: 'CANCELED',
+        billingType: subscription.billingType,
         message: 'Assinatura cancelada. Contate o suporte para reativar.'
       };
     }

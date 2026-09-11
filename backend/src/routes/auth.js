@@ -19,4 +19,10 @@ router.get('/perfil', authenticateToken, withErrorHandling(authController.perfil
 // Rota protegida - Atualizar perfil
 router.put('/perfil', authenticateToken, withErrorHandling(authController.atualizarPerfil));
 
+// Rota pública - Verificar e-mail (link do WelcomeEmail.jsx)
+router.get('/verificar-email', withErrorHandling(authController.verificarEmail));
+
+// Rota pública - Aceitar convite de membro (link do InviteEmail.jsx)
+router.post('/aceitar-convite', withErrorHandling(authController.aceitarConvite));
+
 module.exports = router;

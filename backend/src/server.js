@@ -20,6 +20,7 @@ const assinaturaRoutes = require('./routes/assinatura');
 const auditoriaRoutes = require('./routes/auditoria');
 const lgpdRoutes = require('./routes/lgpd');
 const testEmailRoutes = require('./routes/test-email');
+const inviteRoutes = require('./routes/invites');
 
 const app = express();
 
@@ -138,6 +139,7 @@ app.use('/api/membros', membrosRoutes);
 app.use('/api/assinatura', assinaturaRoutes);
 app.use('/api/auditoria', auditoriaRoutes);
 app.use('/api/tenant', lgpdRoutes);
+app.use('/api/invites', inviteRoutes);
 app.use('/api/test-email', testEmailRoutes);
 
 // Health check

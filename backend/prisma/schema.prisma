@@ -31,6 +31,7 @@ model Tenant {
   auditLogs     AuditLog[]
   onlineSessions OnlineSession[]
   modules       TenantModule[]
+  invites       Invite[]
 }
 
 // Usuários vinculados a um Tenant
@@ -44,6 +45,8 @@ model User {
   role      Role      @default(MEMBER)
   avatarUrl String?
   emailVerified Boolean @default(false)
+  emailVerificationToken String? @unique
+  emailVerifiedAt DateTime?
   active    Boolean   @default(true)
   lastLogin DateTime?
   createdAt DateTime  @default(now())
@@ -93,6 +96,25 @@ model OnlineSession {
   @@index([token])
   @@index([userId])
   @@index([tenantId])
+}
+
+// Convites de membros da equipe
+// Token enviado por e-mail (InviteEmail.jsx) para aceitar a adesão a um tenant
+model Invite {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email       String
+  token       String    @unique
+  role        Role      @default(MEMBER)
+  invitedById String?
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([token])
 }
 
 // Chamados (tickets)
@@ -231,6 +253,9 @@ model Subscription {
   planId                String
   currentPeriodEnd      DateTime
   
+  // Forma de pagamento escolhida no checkout: 'PIX' | 'BOLETO' | 'CREDIT_CARD'
+  billingType           String?
+
   // Controle de tentativas de pagamento
   paymentAttempts       Int                @default(0)
   lastPaymentAttempt    DateTime?
@@ -294,4 +319,23 @@ enum AuditAction {
   LOGIN
   LOGOUT
   EXPORT
+}
+
+// ============================================
+// Data Deletion Log - Registro LGPD (Art. 15/18)
+// ============================================
+// Persiste um registro ANÔNIMO da exclusão de dados de um tenant.
+// NOTA: NÃO possui FK para Tenant de propósito — deve sobrevivere
+// à exclusão em cascata (direito ao esquecimento).
+model DataDeletionLog {
+  id              String   @id @default(uuid())
+  tenantSlug      String   // Identificador da organização no momento da exclusão
+  tenantName      String
+  reason          String   @default("user_request") // user_request | violation | contract_end
+  requestedByEmail String? // E-mail anonimizado do solicitante
+  dataSummary     Json?    // Resumo anônimo (quantidades, sem dados pessoais)
+  deletedAt       DateTime @default(now())
+
+  @@index([tenantSlug])
+  @@index([deletedAt])
 }

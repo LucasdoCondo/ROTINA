@@ -7,6 +7,8 @@ import { Dashboard } from './pages/Dashboard';
 import { BillingUpgrade } from './pages/BillingUpgrade';
 import { Auditoria } from './pages/Auditoria';
 import { AuditoriaDemo } from './pages/AuditoriaDemo';
+import { AceitarConvite } from './pages/AceitarConvite';
+import { VerificarEmail } from './pages/VerificarEmail';
 import { SubscriptionGuard } from './components/SubscriptionGuard';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Terms } from './pages/Terms';
@@ -79,6 +81,8 @@ function AppRoutes() {
       />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/aceitar-convite" element={<AceitarConvite />} />
+      <Route path="/verificar-email" element={<VerificarEmail />} />
 
       {/* ═══════════════════════════════════════════════
           Rota de Upgrade / Cobrança

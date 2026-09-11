@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const webhookController = require('../controllers/webhookController');
+const { withErrorHandling } = require('../middleware/apiHandler');
 
 // ═══════════════════════════════════════════════
 // Webhooks de Pagamento
 // ═══════════════════════════════════════════════
-// 
+//
 // IMPORTANTE: Webhooks NÃO usam authenticateToken
 // porque são chamados pelos gateways (Asaas/Stripe),
 // não por usuários autenticados.
@@ -19,7 +20,7 @@ const webhookController = require('../controllers/webhookController');
 // ═══════════════════════════════════════════════
 
 // Webhook do Asaas (requer body como raw text para validação)
-router.post('/asaas', express.raw({ type: 'application/json' }), webhookController.asaasWebhook);
+router.post('/asaas', express.raw({ type: 'application/json' }), withErrorHandling(webhookController.asaasWebhook));
 
 // Webhook do Stripe (requer body como raw text para validação da assinatura)
 router.post('/stripe', express.raw({ type: 'application/json' }), webhookController.stripeWebhook);
@@ -29,16 +30,8 @@ router.post('/stripe', express.raw({ type: 'application/json' }), webhookControl
 // ═══════════════════════════════════════════════
 const { authenticateToken } = require('../middleware/auth');
 
-// Verificar status da assinatura do tenant logado
-router.get('/status', authenticateToken, async (req, res) => {
-  try {
-    const { subscriptionService } = require('../services/subscriptionService');
-    const status = await subscriptionService.checkAccess(req.tenantId);
-    return res.json(status);
-  } catch (error) {
-    console.error('[Webhook] Erro ao verificar status:', error);
-    return res.status(500).json({ error: 'Erro ao verificar status da assinatura' });
-  }
-});
+// Verificar status da assinatura do tenant logado.
+// SEGURIDAD: tenantId sempre vem de req.tenantId (JWT), nunca de params.
+router.get('/status', authenticateToken, withErrorHandling(webhookController.checkSubscriptionStatus));
 
 module.exports = router;

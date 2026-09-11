@@ -12,7 +12,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "node prisma/seed.js"
+    "prisma:seed": "node prisma/seed.js",
+    "test": "jest --runInBand",
+    "test:watch": "jest --runInBand --watch"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
@@ -36,8 +38,16 @@
     "resend": "^3.2.0"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
     "nodemon": "^3.0.1",
-    "prisma": "^6.6.0"
+    "prisma": "^6.6.0",
+    "supertest": "^7.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["<rootDir>/tests/**/*.test.js"],
+    "testPathIgnorePatterns": ["/node_modules/", "/dist/"],
+    "clearMocks": true
   },
   "prisma": {
     "seed": "node prisma/seed.js"

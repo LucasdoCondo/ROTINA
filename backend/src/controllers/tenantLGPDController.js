@@ -1,5 +1,17 @@
 const prisma = require('../config/prisma');
+const crypto = require('node:crypto');
 const { logExport, logDelete } = require('../utils/auditLogger');
+
+/**
+ * Anonimiza un e-mail (hash SHA-256) para el registro LGPD.
+ * Nunca se persiste el e-mail real después de la eliminación.
+ *
+ * @param {string} email - E-mail a anonimizar
+ * @returns {string} Hash SHA-256 en hexadecimal
+ */
+function hashEmail(email) {
+  return crypto.createHash('sha256').update(String(email).toLowerCase()).digest('hex');
+}
 
 // Exportar dados completos do tenant (LGPD - Direito de portabilidade)
 const exportarDadosTenant = async (req, res) => {
@@ -212,21 +224,64 @@ const excluirTenant = async (req, res) => {
       });
     }
 
+    // Contar todos os registros dependentes (para resumen anónimo LGPD)
+    const [totalUsers, totalClients, totalProducts, totalOrders, totalTickets, totalMembers, totalAuditLogs, totalSessions] = await Promise.all([
+      prisma.user.count({ where: { tenantId } }),
+      prisma.client.count({ where: { tenantId } }),
+      prisma.product.count({ where: { tenantId } }),
+      prisma.order.count({ where: { tenantId } }),
+      prisma.ticket.count({ where: { tenantId } }),
+      prisma.memberSubscription.count({ where: { tenantId } }),
+      prisma.auditLog.count({ where: { tenantId } }),
+      prisma.onlineSession.count({ where: { tenantId } }),
+    ]);
+
     // Salvar dados para auditoria ANTES da exclusão
     const dadosAuditoria = {
       tenantId: tenant.id,
       tenantName: tenant.name,
       tenantSlug: tenant.slug,
-      usuarios: tenant.users.length,
+      usuarios: totalUsers,
+      clientes: totalClients,
+      produtos: totalProducts,
+      pedidos: totalOrders,
+      chamados: totalTickets,
+      membros: totalMembers,
+      auditLogs: totalAuditLogs,
+      sessoesOnline: totalSessions,
       dataExclusao: new Date().toISOString(),
     };
 
-    // Excluir tenant (onDelete: Cascade irá remover todos os dados filhos)
+    // 📋 LGPD: persistir registro ANÓNIMO que SOBREVIVE à exclusão em cascata.
+    // DataDeletionLog não tem FK para Tenant de propósito.
+    await prisma.dataDeletionLog.create({
+      data: {
+        tenantSlug: tenant.slug,
+        tenantName: tenant.name,
+        reason: 'user_request',
+        requestedByEmail: user?.email ? hashEmail(user.email) : null, // anonimizado
+        dataSummary: {
+          totalUsuarios: totalUsers,
+          totalClientes: totalClients,
+          totalProdutos: totalProducts,
+          totalPedidos: totalOrders,
+          totalChamados: totalTickets,
+          totalMembros: totalMembers,
+          totalAuditLogs: totalAuditLogs,
+          sessoesOnline: totalSessions,
+        },
+      },
+    });
+
+    // Excluir tenant (onDelete: Cascade removerá todos os registros filhos)
+    // User, Client, Ticket, Product, Order, Subscription, MemberSubscription,
+    // AuditLog e OnlineSession são removidos em cascata pelo banco.
     await prisma.tenant.delete({
       where: { id: tenantId },
     });
 
-    // 📝 Audit Log: registrar exclusão
+    // 📝 Audit Log: registrar exclusión (se intenta guardar ANTES do cascade;
+    // si falla por cascade, o registro LGPD já está garantizado)
     logDelete(tenantId, user, 'Tenant', tenantId, dadosAuditoria, req);
 
     res.json({
@@ -234,7 +289,11 @@ const excluirTenant = async (req, res) => {
       message: 'Organização e todos os dados associados foram excluídos com sucesso.',
       dadosExcluidos: {
         tenant: tenant.name,
-        usuariosRemovidos: tenant.users.length,
+        usuariosRemovidos: totalUsers,
+        clientesRemovidos: totalClients,
+        produtosRemovidos: totalProducts,
+        pedidosRemovidos: totalOrders,
+        chamadosRemovidos: totalTickets,
       },
     });
 

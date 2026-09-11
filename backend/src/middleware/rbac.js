@@ -107,6 +107,7 @@ const permissionsMap = {
   // ═══════════════════════════════════════════
   // TENANT / ORGANIZAÇÃO (LGPD - Exclusão em cascata)
   // ═══════════════════════════════════════════
+  'tenant:export': ['ADMIN'],
   'tenant:delete': ['ADMIN'],
 };
 
