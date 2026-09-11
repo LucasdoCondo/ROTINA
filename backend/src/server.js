@@ -21,6 +21,8 @@ const auditoriaRoutes = require('./routes/auditoria');
 const lgpdRoutes = require('./routes/lgpd');
 const testEmailRoutes = require('./routes/test-email');
 const inviteRoutes = require('./routes/invites');
+const oportunidadesRoutes = require('./routes/oportunidades');
+const { authLimiter, loginLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
 
@@ -132,6 +134,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rotas da API
+app.use('/api/auth/login', loginLimiter); // 🔐 Brute-force protection (antes do roteador)
+app.use('/api/auth', authLimiter);        // 🔐 Rate limit dedicado para auth
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/usuarios', usuariosRoutes);
@@ -145,6 +149,7 @@ app.use('/api/auditoria', auditoriaRoutes);
 app.use('/api/tenant', lgpdRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/test-email', testEmailRoutes);
+app.use('/api/oportunidades', oportunidadesRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

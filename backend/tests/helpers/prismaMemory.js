@@ -26,6 +26,7 @@ const TABLES = [
   'onlineSession',
   'tenantModule',
   'invite',
+  'opportunity',
   'dataDeletionLog',
   'processedWebhook',
 ];

@@ -79,6 +79,14 @@ const permissionsMap = {
   'order:delete': ['ADMIN'],
 
   // ═══════════════════════════════════════════
+  // OPORTUNIDADES (CRM - Pipeline de Vendas)
+  // ═══════════════════════════════════════════
+  'opportunity:list': ['ADMIN', 'MANAGER', 'MEMBER'],
+  'opportunity:create': ['ADMIN', 'MANAGER', 'MEMBER'],
+  'opportunity:update': ['ADMIN', 'MANAGER'],
+  'opportunity:delete': ['ADMIN'],
+
+  // ═══════════════════════════════════════════
   // MEMBROS / ASSINATURAS (Members)
   // ═══════════════════════════════════════════
   'member:list': ['ADMIN', 'MANAGER'],

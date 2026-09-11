@@ -32,6 +32,7 @@ model Tenant {
   onlineSessions OnlineSession[]
   modules       TenantModule[]
   invites       Invite[]
+  opportunities Opportunity[]
 }
 
 // Usuários vinculados a um Tenant
@@ -154,6 +155,7 @@ model Client {
   updatedAt    DateTime  @updatedAt
 
   orders       Order[]
+  opportunities Opportunity[]
 
   @@index([tenantId])
   @@index([cpfCnpj])
@@ -342,6 +344,33 @@ model DataDeletionLog {
 
 // Log de webhooks de pagamento já processados (idempotência anti-replay).
 // NÃO tem FK para Tenant: a marca d'água sobrevive à exclusão LGPD.
+// ═══════════════════════════════════════════════
+// Oportunidades (CRM - Pipeline de Vendas)
+// ═══════════════════════════════════════════════
+// stage: lead | qualified | proposal | negotiation | won | lost
+model Opportunity {
+  id                String    @id @default(uuid())
+  tenantId          String
+  tenant            Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientId          String?
+  client            Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  title             String
+  description       String?
+  value             Decimal   @default(0)
+  stage             String    @default("lead")
+  probability       Int       @default(0)
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+  ownerUserId       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, stage])
+}
+
+// Log de webhooks de pagamento ja processados (idempotencia anti-replay).
+// NAO tem FK para Tenant: a marca d'agua sobrevive a exclusao LGPD.
 model ProcessedWebhook {
   id          String   @id @default(uuid())
   paymentId   String   @unique
