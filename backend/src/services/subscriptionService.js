@@ -303,6 +303,48 @@ const subscriptionService = {
    * @param {Object} event - Evento normalizado do Asaas
    * @returns {Promise<Object>} Resultado do processamento
    */
+  /**
+   * 🔐 IDEMPOTÊNCIA (anti-replay): verifica se um pagamento já foi processado.
+   * Gateways usam entrega "at-least-once" — o mesmo PAYMENT_CONFIRMED pode
+   * chegar 2+ vezes. Reprocessá-lo estenderia o período da assinatura
+   * repetidamente (ataque de replay + receita indevida).
+   *
+   * @param {string} paymentId - ID do pagamento no gateway
+   * @returns {Promise<boolean>} true se já processado
+   */
+  async isPaymentProcessed(paymentId) {
+    if (!paymentId) return false;
+    const found = await prisma.processedWebhook.findUnique({
+      where: { paymentId },
+    });
+    return Boolean(found);
+  },
+
+  /**
+   * Registra um pagamento como processado (marca d'água de idempotência).
+   * Falha ao gravar NUNCA deve interromper a resposta ao gateway.
+   *
+   * @param {Object} event - Evento normalizado do webhook
+   * @returns {Promise<void>}
+   */
+  async markPaymentProcessed(event) {
+    if (!event?.paymentId) return;
+    try {
+      await prisma.processedWebhook.create({
+        data: {
+          paymentId: event.paymentId,
+          type: event.type || 'unknown',
+        },
+      });
+    } catch (error) {
+      // Violação de unique = webhook concorrente já registrou (ok, inofensivo)
+      logger.warn(
+        { paymentId: event.paymentId, error: error.message },
+        '[Webhook] Não foi possível registrar marca de idempotência'
+      );
+    }
+  },
+
   async processWebhookEvent(event) {
     logger.info(
       { eventType: event.type, subscriptionId: event.subscriptionId, tenantId: event.tenantId },

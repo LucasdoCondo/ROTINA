@@ -27,6 +27,7 @@ const TABLES = [
   'tenantModule',
   'invite',
   'dataDeletionLog',
+  'processedWebhook',
 ];
 
 let seq = 0;

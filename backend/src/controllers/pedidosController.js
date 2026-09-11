@@ -83,6 +83,14 @@ const criarPedido = async (req, res) => {
       });
     }
 
+    // 🔐 SEGURANÇA (IDOR): cliente informado não pertence ao tenant autenticado
+    if (error.message === 'CLIENT_NOT_FOUND') {
+      return res.status(404).json({
+        message: 'Cliente não encontrado',
+        code: 'CLIENT_NOT_FOUND'
+      });
+    }
+
     console.error('Erro ao criar pedido:', error);
     res.status(500).json({
       message: 'Erro ao criar pedido',

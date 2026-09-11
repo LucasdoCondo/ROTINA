@@ -107,7 +107,18 @@ if (process.env.SENTRY_DSN) {
   }
 }
 
-// Rate limiting
+// ═══════════════════════════════════════════════
+// Webhooks (devem vir ANTES do express.json() e
+// ANTES do rate limiter global)
+// Os webhooks precisam do body em RAW (text) para
+// validar a assinatura digital do gateway.
+// 🔐 SEGURANÇA/AVAILABILITY: o gateway de pagamento envia
+// volume legítimo que NÃO pode ser bloqueado pelo limite
+// de 100 req/15min por IP (perderia PAYMENT_CONFIRMED).
+// ═══════════════════════════════════════════════
+app.use('/api/webhooks', webhookRoutes);
+
+// Rate limiting (montado APÓS os webhooks para não afetá-los)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: 100, // limite de 100 requisições por IP
@@ -115,13 +126,6 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 app.use('/api/', limiter);
-
-// ═══════════════════════════════════════════════
-// Webhooks (devem vir ANTES do express.json())
-// Os webhooks precisam do body em RAW (text) para
-// validar a assinatura digital do gateway
-// ═══════════════════════════════════════════════
-app.use('/api/webhooks', webhookRoutes);
 
 // Body parser (para todas as outras rotas)
 app.use(express.json({ limit: '10mb' }));

@@ -21,17 +21,47 @@ const prisma = require('../config/prisma');
 const SENSITIVE_FIELDS = [
   'password',
   'senha',
+  'passwordhash',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'securitytoken',
+  'authorization',
+  'secret',
+  'apikey',
+  'api_key',
+  'asaasapikey',
+  'stripesubscriptionid',
+  'stripecustomerid',
+  'cardnumber',
+  'card_number',
+  'creditcard',
+  'cvv',
+  'cvc',
+  'pixkey',
+];
+
+/**
+ * Radicais sensíveis: qualquer campo cujo nome CONTENHA um destes
+ * termos (case-insensitive) é mascarado. Cobertura por substring
+ * pega variantes como "apiToken", "userPassword", "sessionToken",
+ * "asaasApiKey", "cardNumber" etc.
+ */
+const SENSITIVE_STEMS = [
+  'password',
+  'senha',
   'token',
   'secret',
-  'apiKey',
+  'apikey',
   'api_key',
-  'stripeCustomerId',
-  'stripeSubscriptionId',
-  'asaasApiKey',
-  'cardNumber',
+  'authorization',
+  'creditcard',
+  'cardnumber',
   'card_number',
   'cvv',
   'cvc',
+  'pixkey',
+  'pix_key',
 ];
 
 /**
@@ -48,9 +78,8 @@ function sanitizeSensitiveData(obj) {
 
   for (const key of Object.keys(sanitized)) {
     const lowerKey = key.toLowerCase();
-    const isSensitive = SENSITIVE_FIELDS.some(
-      (field) => field.toLowerCase() === lowerKey
-    );
+    // Redação por substring: falha seguro (prefere mascarar a expor)
+    const isSensitive = SENSITIVE_STEMS.some((stem) => lowerKey.includes(stem));
 
     if (isSensitive) {
       sanitized[key] = '[REDACTED]';

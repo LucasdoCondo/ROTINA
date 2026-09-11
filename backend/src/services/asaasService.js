@@ -198,10 +198,14 @@ const asaasService = {
     // O Asaas permite configurar um token de segurança no webhook
     // que é enviado no body como 'securityToken'
     const expectedToken = process.env.ASAAS_WEBHOOK_TOKEN;
-    
+
+    // 🔐 SEGURANÇA (fail-closed): sem o token configurado, TODOS os webhooks
+    // são rejeitados. Comportamento anterior (fail-open) permitia que
+    // qualquer atacante forjasse PAYMENT_CONFIRMED e ativasse assinaturas
+    // gratuitamente. É OBRIGATÓRIO configurar ASAAS_WEBHOOK_TOKEN em produção.
     if (!expectedToken) {
-      console.warn('[Asaas] Webhook token não configurado. Pulando validação.');
-      return true;
+      console.error('[Asaas] ASAAS_WEBHOOK_TOKEN não configurado — webhook REJEITADO (fail-closed)');
+      return false;
     }
 
     if (body.securityToken !== expectedToken) {

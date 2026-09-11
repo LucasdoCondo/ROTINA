@@ -59,8 +59,19 @@ const criarUsuario = async (req, res) => {
       });
     }
 
+    // 🔐 SEGURANÇA (RBAC): apenas ADMIN pode criar usuários com cargo
+    // elevado. Evita escalada vertical de privilégio (ex: um MANAGER
+    // criando um usuário ADMIN e obtendo acesso administrativo).
+    const cargoSolicitado = cargo || 'MEMBER';
+    if (req.user.cargo !== 'ADMIN' && cargoSolicitado !== 'MEMBER') {
+      return res.status(403).json({
+        message: 'Apenas administradores podem criar usuários com cargo elevado',
+        code: 'ROLE_ESCALATION_FORBIDDEN'
+      });
+    }
+
     const usuario = await userService.criar(tenantId, {
-      nome, email, senha, cargo, avatar_url
+      nome, email, senha, cargo: cargoSolicitado, avatar_url
     });
 
     // 📝 Audit Log: registrar criação

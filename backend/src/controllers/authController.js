@@ -228,8 +228,10 @@ const login = async (req, res) => {
 
     if (!user) {
       return res.status(401).json({
-        message: 'Usuário não encontrado',
-        code: 'USER_NOT_FOUND'
+        // 🔐 SEGURANÇA: mensagem genérica para evitar user enumeration
+        // (não revelar se o e-mail existe ou não na plataforma)
+        message: 'Email ou senha inválidos',
+        code: 'INVALID_CREDENTIALS'
       });
     }
 
@@ -252,8 +254,10 @@ const login = async (req, res) => {
     const senhaValida = await bcrypt.compare(senha, user.password);
     if (!senhaValida) {
       return res.status(401).json({
-        message: 'Senha incorreta',
-        code: 'INVALID_PASSWORD'
+        // 🔐 SEGURANÇA: mesma mensagem do caso "usuário não encontrado"
+        // para impedir enumeração de contas por diferença de resposta
+        message: 'Email ou senha inválidos',
+        code: 'INVALID_CREDENTIALS'
       });
     }
 

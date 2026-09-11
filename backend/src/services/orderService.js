@@ -105,6 +105,16 @@ class OrderService {
   async criar(tenantId, data) {
     const { cliente_id, itens } = data;
 
+    // 🔐 SEGURANÇA (IDOR): o cliente informado pelo frontend DEVE pertencer
+    // ao mesmo tenant. Sem esta validação, um pedido poderia ser associado
+    // a um cliente de outro tenant (vazamento entre tenants).
+    const client = await prisma.client.findFirst({
+      where: { id: cliente_id, tenantId },
+    });
+    if (!client) {
+      throw new Error('CLIENT_NOT_FOUND');
+    }
+
     return prisma.$transaction(async (tx) => {
       // Calcular total e verificar estoque
       let totalAmount = 0;

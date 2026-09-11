@@ -74,10 +74,21 @@ const webhookController = {
       '[Webhook] Evento recebido'
     );
 
-    // 3. Processar o evento (banco, e-mails, audit logs)
+    // 3. 🔐 IDEMPOTÊNCIA (anti-replay): gateways reenviam eventos antigos
+    // (at-least-once). Um PAYMENT_CONFIRMED reprocessado estenderia
+    // o currentPeriodEnd repetidamente. Idempotência garante processamento único.
+    if (event.paymentId && (await subscriptionService.isPaymentProcessed(event.paymentId))) {
+      logger.info({ paymentId: event.paymentId }, '[Webhook] Evento duplicado ignorado (replay)');
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+
+    // 4. Processar o evento (banco, e-mails, audit logs)
     const result = await subscriptionService.processWebhookEvent(event);
 
-    // 4. Sempre retornar 200 para el gateway (evita reenvíos)
+    // 5. Registrar pagamento como processado (marca d'água anti-replay)
+    await subscriptionService.markPaymentProcessed(event);
+
+    // 6. Sempre retornar 200 para el gateway (evita reenvíos)
     return res.status(200).json({
       received: true,
       ...result

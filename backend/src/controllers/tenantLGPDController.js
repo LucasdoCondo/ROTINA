@@ -86,10 +86,11 @@ const exportarDadosTenant = async (req, res) => {
           where: { active: true },
         },
         // Sessões online
+        // 🔐 SEGURANÇA: o token de sessão NUNCA é exportado (equivale a
+        // entregar credenciais de acesso no arquivo de portabilidade).
         onlineSessions: {
           select: {
             id: true,
-            token: true,
             loginAt: true,
             lastActivity: true,
           },
