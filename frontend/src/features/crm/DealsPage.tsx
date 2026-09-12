@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCustomers, useDealFunnel, useDeals, useCrmMutations } from './hooks';
 import { DEAL_STAGES, type CreateDealInput, type Deal, type DealStage } from './crm.service';
 import { DEAL_STAGE_META, DEAL_STAGE_TRANSITIONS } from '@/lib/deal-stages';
-import { formatDateTime, formatMoney } from '@/lib/format';
+import { formatMoney } from '@/lib/format';
 import { Spinner } from '@/components/ui/Spinner';
 import { ApiError } from '@/types/api';
 
@@ -26,6 +26,7 @@ function groupDealsByStage(rows: Deal[]): KanbanColumn[] {
 }
 
 const STAGE_BADGE: Record<DealStage, string> = {
+  LEAD: 'badge-info',
   QUALIFICATION: 'badge-status-in_progress',
   PROPOSAL: 'badge-priority-high',
   NEGOTIATION: 'badge-priority-high',
@@ -120,12 +121,12 @@ export function DealsPage() {
             {kanbanColumns.map((column) => (
               <div key={column.stage} className="kanban-column" role="listitem">
                 <header className="kanban-column-head">
-                  <strong>{column.meta.label}</strong>
+                  <strong>{DEAL_STAGE_META[column.stage].label}</strong>
                   <span className="kanban-count" title={`${column.deals.length} deal(s)`}>
                     {column.deals.length}
                   </span>
                 </header>
-                <span className="kanban-hint">{column.meta.hint}</span>
+                <span className="kanban-hint">{DEAL_STAGE_META[column.stage].hint}</span>
                 <span className="kanban-total">{formatMoney(column.total, 'BRL')}</span>
                 <div className="kanban-cards">
                   {column.deals.map((deal) => {
@@ -321,7 +322,7 @@ export function DealsPage() {
                 </tr>
               </thead>
               <tbody>
-                {list.data.rows.map((deal) => (
+                {list.data && list.data.rows.map((deal) => (
                   <tr key={deal.id}>
                     <td><strong>{deal.title}</strong></td>
                     <td>{deal.customer.name}</td>
@@ -361,7 +362,7 @@ export function DealsPage() {
                     </td>
                   </tr>
                 ))}
-                {list.data.rows.length === 0 && (
+                {list.data && list.data.rows.length === 0 && (
                   <tr><td colSpan={5}>Nenhum deal encontrado.</td></tr>
                 )}
               </tbody>
@@ -384,8 +385,7 @@ export function DealsPage() {
               </button>
             </div>
           </div>
-        </>
-      )}
+      </section>
     </div>
   );
 }

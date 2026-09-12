@@ -15,6 +15,7 @@ const EnvSchema = z.object({
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(1),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL es obligatoria'),
+  REDIS_URL: z.string().optional(),
 
   JWT_ACCESS_SECRET: z
     .string()

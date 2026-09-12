@@ -101,6 +101,26 @@ services:
              npx prisma generate &&
              npx tsx watch src/server.ts"
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rotina-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      NODE_ENV: development
+      VITE_API_URL: http://localhost:3000/api/v1
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    command: >
+      sh -c "npm install && npm run dev -- --host 0.0.0.0"
+
 volumes:
   rotina_pgdata:
   rotina_redisdata:

@@ -11,6 +11,9 @@ import { TicketDetailPage } from '@/features/tickets/TicketDetailPage';
 import { CrmPage } from '@/features/crm/CrmPage';
 import { CustomersPage } from '@/features/crm/CustomersPage';
 import { DealsPage } from '@/features/crm/DealsPage';
+import { MembersPage } from '@/features/members/MembersPage';
+import { ProductsPage } from '@/features/ecommerce/ProductsPage';
+import { OrdersPage } from '@/features/ecommerce/OrdersPage';
 import { NotFoundPage } from '@/components/ui/PageStates';
 
 /**
@@ -67,6 +70,28 @@ export default function App() {
                 <Route index element={<Navigate to="clientes" replace />} />
                 <Route path="clientes" element={<CustomersPage />} />
                 <Route path="funil" element={<DealsPage />} />
+              </Route>
+
+              <Route
+                path="/members"
+                element={
+                  <ProtectedRoute roles={['ADMIN']}>
+                    <MembersPage />
+                  </ProtectedRoute>
+                }
+              />
+
+                           <Route
+                path="/ecommerce"
+                element={
+                  <ProtectedRoute>
+                    <DashboardLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Navigate to="produtos" replace />} />
+                <Route path="produtos" element={<ProductsPage />} />
+                <Route path="pedidos" element={<OrdersPage />} />
               </Route>
             </Route>
 

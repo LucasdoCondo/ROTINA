@@ -31,6 +31,7 @@ const AUTH_FREE_URLS = ['/auth/login', '/auth/register-tenant', '/auth/refresh-t
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: REQUEST_TIMEOUT_MS,
+  withCredentials: true, // Envia cookies httpOnly automaticamente
 });
 
 // ───────────────────────── Request ─────────────────────────

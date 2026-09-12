@@ -16,6 +16,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: 'dashboard' },
   { to: '/tickets', label: 'Chamados', icon: 'tickets' },
   { to: '/crm', label: 'CRM', icon: 'users' },
+  { to: '/ecommerce', label: 'E-commerce', icon: 'shopping' },
+  { to: '/members', label: 'Membros', icon: 'users' },
 ];
 
 /** Navegação lateral. Responsividade: fixed no desktop, off-canvas + backdrop no mobile. */

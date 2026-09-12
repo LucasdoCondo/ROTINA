@@ -27,16 +27,21 @@
     "db:setup": "npm run db:up && npm run db:migrate && npm run db:seed",
     "test": "vitest run",
     "test:watch": "vitest",
-    "smoke": "tsx scripts/smoke-app.ts"
+    "smoke": "tsx scripts/smoke-app.ts",
+    "job:purge": "tsx src/jobs/purge-job.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/ioredis": "^4.28.10",
     "argon2": "^0.41.1",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
     "helmet": "^8.0.0",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.2",
     "pino": "^9.0.0",
     "pino-http": "^10.0.0",

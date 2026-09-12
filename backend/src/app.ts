@@ -1,6 +1,7 @@
 import express, { type Express } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { env, IS_PRODUCTION } from './config/env.js';
 import { httpLogger } from './shared/logger.js';
 import { v1Router } from './routes/v1.js';
@@ -31,6 +32,8 @@ export function createApp(): Express {
 
   // Body parsing con límite (evita payloads abusivos).
   app.use(express.json({ limit: '1mb' }));
+  // Cookie parsing: necessário para ler cookies httpOnly (auth via cookies).
+  app.use(cookieParser());
 
   // Logging estructurado con request-id (x-request-id).
   app.use(httpLogger);

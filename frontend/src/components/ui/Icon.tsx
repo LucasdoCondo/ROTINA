@@ -5,10 +5,11 @@ import type { ReactNode } from 'react';
  * de biblioteca de ícones na fase de setup.
  */
 export type IconName =
-  | 'dashboard'
+    | 'dashboard'
   | 'tickets'
   | 'users'
   | 'building'
+  | 'shopping'
   | 'menu'
   | 'close'
   | 'logout'
@@ -53,7 +54,14 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M6 12h10" />
     </>
   ),
-  'chevron-down': <path d="M6 9l6 6 6-6" />,
+    'chevron-down': <path d="M6 9l6 6 6-6" />,
+  shopping: (
+    <>
+      <path d="M16 11V7a4 4 0 1 0-8 0v4" />
+      <path d="M4 11h16v10a2 2 0 0 0 2 2h2" />
+      <path d="M4 11l2-2h12l2 2" />
+    </>
+  ),
   user: (
     <>
       <circle cx="12" cy="8" r="3.4" />
