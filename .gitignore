@@ -20,4 +20,8 @@ Thumbs.db
 .env
 .env.*
 !*.env.example
+# Rascunhos/exports de env com nomes não padrão (ex.: "nano .env.production.txt")
+nano*
+*.env*.txt
+
 
