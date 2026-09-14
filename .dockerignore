@@ -1,0 +1,14 @@
+# Contexto de build da raiz (docker-compose.prod.yml → frontend/Dockerfile.prod)
+# Mantém o contexto leve: sem dependências, artefatos e segredos
+node_modules
+**/node_modules
+dist
+**/dist
+backend/.env
+frontend/.env
+.env
+.env.production
+.git
+.github
+repomix-output.xml
+*.md

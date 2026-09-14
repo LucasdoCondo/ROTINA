@@ -1,0 +1,47 @@
+# =============================================================
+#  ROTINA — Backend Dockerfile (PRODUÇÃO)
+#
+#  Build:   docker build -f Dockerfile.prod -t rotina-backend-prod .
+#  Compose: usado por ../docker-compose.prod.yml
+#
+#  Diferenças do Dockerfile (dev):
+#    - NODE_ENV=production
+#    - Roda o build compilado (node dist/server.js), sem tsx watch
+#    - Migrações aplicadas na inicialização (prisma migrate deploy)
+# =============================================================
+
+FROM node:20-alpine AS base
+WORKDIR /app
+
+# Dependências nativas (argon2 precisa de libc6-compat; Prisma de openssl)
+RUN apk add --no-cache libc6-compat openssl
+
+# Cópia apenas do necessário para cache de camada
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+
+FROM base AS deps
+RUN npm ci
+
+FROM base AS build
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate
+RUN npm run build
+
+FROM base AS runtime
+ENV NODE_ENV=production
+
+# Dependências completas (mantém CLI do Prisma p/ `migrate deploy`
+# e o cliente já gerado em node_modules/.prisma)
+COPY --from=deps /app/node_modules ./node_modules
+# Cliente Prisma gerado durante o build
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+# Artefatos compilados + schema/migrations
+COPY --from=build /app/dist ./dist
+COPY prisma ./prisma
+COPY package.json ./
+
+EXPOSE 3000
+
+CMD ["node", "dist/server.js"]

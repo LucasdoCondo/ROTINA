@@ -15,3 +15,9 @@ tmp/
 # SO / editor
 .DS_Store
 Thumbs.db
+
+# Variáveis de ambiente / segredos (NUNCA versionar!)
+.env
+.env.*
+!*.env.example
+
