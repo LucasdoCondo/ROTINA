@@ -1,0 +1,17 @@
+# ─────────────────────────────────────────────
+#  ROTINA — Gitignore raiz
+# ─────────────────────────────────────────────
+
+# Artefatos de ferramentas de análise/pacotes
+repomix-output.xml
+repomix-output.*
+
+# Logs e temporários
+*.log
+logs/
+tmp/
+.temp/
+
+# SO / editor
+.DS_Store
+Thumbs.db
