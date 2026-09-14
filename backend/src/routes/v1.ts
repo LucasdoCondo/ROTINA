@@ -5,6 +5,7 @@ import { ticketsRoutes } from '../modules/tickets/tickets.routes.js';
 import { crmRoutes } from '../modules/crm/crm.routes.js';
 import { membersRoutes } from '../modules/members/members.routes.js';
 import { ecommerceRoutes } from '../modules/ecommerce/ecommerce.routes.js';
+import { paymentsRoutes } from '../modules/payments/payments.routes.js';
 import { authRequired } from '../middlewares/auth.js';
 import { tenantIsolation } from '../middlewares/tenant.js';
 import { apiRateLimiter, healthLimiter, authRateLimiter } from '../middlewares/rate-limit.js';
@@ -36,6 +37,9 @@ v1Router.post(
   acceptInvitation,
 );
 
+// Webhook de pagamentos — público (validado por assinatura HMAC, não por JWT).
+v1Router.use('/payments/webhook', paymentsRoutes);
+
 // ─── A partir de aquí: AUTENTICACIÓN + AISLAMIENTO MULTI-TENANT ───
 // 1) Verifica el JWT y adjunta claims (req.auth).
 // 2) Limita por tenant/IP (las rutas públicas ya tienen su propio límite).
@@ -50,3 +54,4 @@ v1Router.use('/crm', crmRoutes);
 v1Router.use('/tickets', ticketsRoutes);
 v1Router.use('/members', membersRoutes);
 v1Router.use('/ecommerce', ecommerceRoutes);
+v1Router.use('/payments', paymentsRoutes);

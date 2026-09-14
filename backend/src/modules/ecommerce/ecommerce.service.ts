@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { requireTenantContext } from '../../shared/tenant-context.js';
 import { BadRequestError, ConflictError, NotFoundError } from '../../shared/errors.js';
+import { queueNotification } from '../../queues/notification.queue.js';
 import type { AuthUser } from '../../types/http.js';
 import type {
   CreateOrderInput,
@@ -154,6 +155,18 @@ export const ecommerceService = {
           { ...input, createdBy: auth.userId, subtotal, total },
           orderItems,
         );
+    }).then(async (order) => {
+      // Fila assíncrona: notificação de pedido criado (BullMQ background).
+      await queueNotification({
+        tenantId,
+        channel: 'inapp',
+        kind: 'order',
+        title: `Pedido ${order.number} criado`,
+        body: `Pedido no valor de R$ ${Number(order.total).toFixed(2)} foi registrado.`,
+        metadata: { orderId: order.id, number: order.number, total: String(order.total) },
+        dedupeKey: `order-${order.id}`,
+      });
+      return order;
     });
   },
 

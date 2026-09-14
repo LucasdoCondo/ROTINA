@@ -1,12 +1,20 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './config/prisma.js';
+import { initRedis } from './config/redis.js';
 import { logger } from './shared/logger.js';
+import { startWorkers } from './queues/workers.js';
 
 export async function bootstrap(): Promise<void> {
   // Conexión explícita a la BD (fail-fast si no hay base de datos).
   await prisma.$connect();
   logger.info('Database connection established');
+
+  // Redis (cache + colas BullMQ) — degradación silenciosa si no está.
+  await initRedis();
+
+  // Colas assíncronas (e-mail, notificações) — no-op se Redis indisponível.
+  startWorkers();
 
   const app = createApp();
   const server = app.listen(env.PORT, env.HOST, () => {

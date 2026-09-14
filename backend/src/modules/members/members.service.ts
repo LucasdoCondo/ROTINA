@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { hashPassword } from '../../shared/password.js';
 import { requireTenantContext } from '../../shared/tenant-context.js';
 import { BadRequestError, ConflictError } from '../../shared/errors.js';
+import { env } from '../../config/env.js';
+import { queueEmail } from '../../queues/email.queue.js';
 import type { AuthUser } from '../../types/http.js';
 import {
   MemberRepository,
@@ -89,6 +91,21 @@ export const membersService = {
       invitedById: auth.userId,
       expiresAt,
       id: token,
+    });
+
+    // Fila assíncrona: dispara o e-mail do convite em background (BullMQ).
+    // Se Redis estiver indisponível, o job é logado (degradação silenciosa).
+    await queueEmail({
+      to: input.email,
+      subject: `Você foi convidado para o ROTINA`,
+      template: 'invitation',
+      data: {
+        token,
+        role: input.role,
+        expiresAt: expiresAt.toISOString(),
+        appUrl: env.PAYMENT_WEBHOOK_URL ? new URL(env.PAYMENT_WEBHOOK_URL).origin : 'http://localhost:5173',
+      },
+      dedupeKey: `invitation-${token}`,
     });
 
     return { invitation, token };

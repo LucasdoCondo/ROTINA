@@ -14,7 +14,8 @@ export type IconName =
   | 'close'
   | 'logout'
   | 'chevron-down'
-  | 'user';
+  | 'user'
+  | 'credit-card';
 
 const ICONS: Record<IconName, ReactNode> = {
   dashboard: (
@@ -66,6 +67,13 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="8" r="3.4" />
       <path d="M5 20c.8-3.4 3.6-5.5 7-5.5s6.2 2.1 7 5.5" />
+    </>
+  ),
+  'credit-card': (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M7 15h4" />
     </>
   ),
 };

@@ -24,6 +24,18 @@ const EnvSchema = z.object({
 
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),
 
+  // Payment gateway (webhooks firmados con HMAC-SHA256)
+  PAYMENT_PROVIDER: z
+    .enum(['STRIPE', 'MERCADOPAGO', 'PAGARME', 'MANUAL'])
+    .default('MANUAL'),
+  PAYMENT_WEBHOOK_SECRET: z.string().default('dev-webhook-secret-change-me'),
+  // URL pública del webhook (p. ej. https://api.rotina.dev/api/v1/payments/webhook)
+  PAYMENT_WEBHOOK_URL: z.string().default(''),
+
+  // BullMQ (colas Redis)
+  QUEUE_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
+  EMAIL_FROM: z.string().default('no-reply@rotina.dev'),
+
   ARGON2_MEMORY_KB: z.coerce.number().int().min(19456).default(65_536),
   ARGON2_TIME_COST: z.coerce.number().int().min(1).max(10).default(3),
   ARGON2_PARALLELISM: z.coerce.number().int().min(1).max(8).default(1),

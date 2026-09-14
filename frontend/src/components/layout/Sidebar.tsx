@@ -18,6 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/crm', label: 'CRM', icon: 'users' },
   { to: '/ecommerce', label: 'E-commerce', icon: 'shopping' },
   { to: '/members', label: 'Membros', icon: 'users' },
+  { to: '/assinatura', label: 'Assinatura', icon: 'credit-card' },
 ];
 
 /** Navegação lateral. Responsividade: fixed no desktop, off-canvas + backdrop no mobile. */

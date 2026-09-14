@@ -322,3 +322,41 @@ details.panel[open] .panel-toggle { margin-bottom: 8px; }
   .status-change { width: 100%; }
 }
 
+/* ─── Badges extras (Planos/Assinatura) ─── */
+.badge-primary { background: var(--color-primary-soft); color: var(--color-primary-strong); }
+.badge-warning { background: #fef3c7; color: #92400e; }
+
+/* ─── Planos & Assinatura ─── */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.plan-card {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 20px;
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.plan-card-active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
+}
+.plan-card h3 { margin: 0; font-size: 18px; }
+.plan-price { display: flex; align-items: baseline; gap: 6px; }
+.plan-price strong { font-size: 28px; }
+.plan-price span { color: var(--color-text-muted); }
+.plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+.plan-features li::before { content: "✓ "; color: var(--color-success); }

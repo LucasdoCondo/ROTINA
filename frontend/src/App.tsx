@@ -14,6 +14,7 @@ import { DealsPage } from '@/features/crm/DealsPage';
 import { MembersPage } from '@/features/members/MembersPage';
 import { ProductsPage } from '@/features/ecommerce/ProductsPage';
 import { OrdersPage } from '@/features/ecommerce/OrdersPage';
+import { SubscriptionPage } from '@/features/payments/SubscriptionPage';
 import { NotFoundPage } from '@/components/ui/PageStates';
 
 /**
@@ -93,6 +94,15 @@ export default function App() {
                 <Route path="produtos" element={<ProductsPage />} />
                 <Route path="pedidos" element={<OrdersPage />} />
               </Route>
+
+              <Route
+                path="/assinatura"
+                element={
+                  <ProtectedRoute roles={['ADMIN']}>
+                    <SubscriptionPage />
+                  </ProtectedRoute>
+                }
+              />
             </Route>
 
             <Route path="*" element={<NotFoundPage />} />
