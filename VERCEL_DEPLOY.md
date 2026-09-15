@@ -42,6 +42,29 @@ vercel deploy --prod
 - ⚠️ O Build Command do painel chegou a ficar com o typo **`npm ruin build`** — isso quebrava todos os deploys do branch `main` (que não tem `vercel.json`). Com Production Branch = `master` isso não afeta os deploys, mas corrigir/limpar o campo evita sustos futuros.
 - ⚠️ O branch `main` deste repositório é uma **reescrita diferente** (TypeScript/multi-tenant). Não promova `main` a produção sem querer substituir o sistema atual.
 
+### 5. Production Branch — como alterar (descoberta 15/09/2026)
+
+No painel atual da Vercel, a opção **"Production Branch" não aparece mais na aba Git** da página de settings (a aba agora cobre apenas: repositório conectado, Git LFS, Deploy Hooks e Verified Commits). A API REST pública também não permite alterá-la:
+
+- `PATCH /v9/projects/{id}` → rejeita o campo `link` (`should NOT have additional property 'link'`);
+- `POST /v9/projects/{id}/link` → reconecta, mas **ignora** `productionBranch` no body (assume o branch padrão do repositório).
+
+**Como trocar de verdade (via painel):**
+
+1. *Settings → Git* → **Disconnect** no repositório conectado;
+2. *Settings → Git* → **Connect Git Repository** → selecione `LucasdoCondo/ROTINA`;
+3. No modal de conexão, escolha o **Production Branch = `master`**;
+4. Confirme e dispare um push no `master` para validar (deve gerar deploy de *Production*).
+
+**Alternativa enquanto o branch de produção permanecer em `main`:** deploy manual de produção via CLI a partir de um checkout do `master`:
+
+```powershell
+git push origin master                 # gera deploy de Preview
+vercel deploy --prod                   # promove a produção (a partir do worktree/checkout do master)
+```
+
+> ℹ️ Em 15/09/2026 o branch padrão do repositório GitHub foi alterado para `master` (era `main`), refletindo que o sistema ativo é o código do `master`. Se a Vercel passar a respeitar o branch padrão em novas conexões, o passo 3 acima já virá correto.
+
 ---
 
 ## ✅ Ajustes já realizados no código
