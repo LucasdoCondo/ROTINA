@@ -24,4 +24,14 @@ Thumbs.db
 nano*
 *.env*.txt
 
+# Dependências instaladas localmente
+node_modules/
+
+# Worktree local do branch master (usado para deploy de produção via Vercel CLI)
+.deploy-fix/
+
+# Link local do projeto Vercel
+.vercel/
+
+
 
