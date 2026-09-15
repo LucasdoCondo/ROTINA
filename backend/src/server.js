@@ -226,4 +226,15 @@ const startServer = async () => {
   }
 };
 
-startServer();
+// ─────────────────────────────────────────────────────────────
+// Serverless (Vercel @vercel/node):
+// O handler precisa ser EXPORTADO — não pode chamar app.listen()
+// no cold start (não existe porta para escutar), o que causava
+// FUNCTION_INVOCATION_FAILED em todas as rotas /api.
+// ─────────────────────────────────────────────────────────────
+module.exports = app;
+
+// Execução local (node server.js) → sobe o servidor HTTP normalmente.
+if (require.main === module) {
+  startServer();
+}
