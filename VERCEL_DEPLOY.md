@@ -39,7 +39,7 @@ vercel deploy --prod
 
 ### 4. Armadilhas conhecidas
 
-- ⚠️ O Build Command do painel chegou a ficar com o typo **`npm ruin build`** — isso quebrava todos os deploys do branch `main` (que não tem `vercel.json`). Com Production Branch = `master` isso não afeta os deploys, mas corrigir/limpar o campo evita sustos futuros.
+- ⚠️ O Build Command do painel deve ser **`npm run build`** (verificado em 15/09/2026 via API: o campo já está com o valor correto). Atenção: esse campo já esteve com um erro de digitação que quebrava todos os deploys do branch `main` (que não tem `vercel.json`). No `master` o Build Command do painel é **ignorado** — quem manda é o bloco `builds` do `vercel.json`.
 - ⚠️ O branch `main` deste repositório é uma **reescrita diferente** (TypeScript/multi-tenant). Não promova `main` a produção sem querer substituir o sistema atual.
 
 ### 5. Production Branch — como alterar (descoberta 15/09/2026)
