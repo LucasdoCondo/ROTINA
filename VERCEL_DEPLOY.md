@@ -4,6 +4,46 @@ Este documento contém **apenas o que você precisa fazer manualmente**. Os arqu
 
 ---
 
+## 🚀 Fluxo de deploy recomendado (atualizado)
+
+> **Resumo:** Production Branch = **`master`**. O build é controlado pelo `vercel.json` (config `builds`) — o Build Command do painel é **ignorado** quando existe `builds` no `vercel.json`. Migrations **nunca** entram no build da Vercel: use o workflow `migrations.yml` (GitHub Actions) ou rode `prisma migrate deploy` manualmente.
+
+### 1. Deploy automático (recomendado)
+
+```bash
+git checkout master
+# ...suas mudanças...
+git push origin master          # → build + promoção automática a produção
+```
+
+O que a Vercel executa (definido no `vercel.json`):
+
+| Bloco `builds` | O que roda | Resultado |
+|---|---|---|
+| `frontend/package.json` → `@vercel/static-build` | `npm run build` (vite build) | `frontend/dist` servido como SPA |
+| `backend/src/server.js` → `@vercel/node` | `postinstall`: `prisma generate` | `/api/*` como serverless function |
+
+Rotas: `/api/(.*)` → `backend/src/server.js`; todo o resto → SPA (`frontend/dist`).
+
+### 2. Deploy manual (hotfix)
+
+```powershell
+cd <checkout-do-master>
+vercel deploy --prod
+```
+
+### 3. Migrations do banco (Neon)
+
+- **Automático:** o workflow `.github/workflows/migrations.yml` roda `prisma migrate deploy` a cada push no `master` que alterar `backend/prisma/migrations/**` (requer o secret `DATABASE_URL` no repositório — Settings → Secrets and variables → Actions; use a conexão **direta** do Neon, sem `-pooler`).
+- **Manual:** `npx -y prisma@6 migrate deploy --schema=backend/prisma/schema.prisma` com `DATABASE_URL` do Neon na sessão.
+
+### 4. Armadilhas conhecidas
+
+- ⚠️ O Build Command do painel chegou a ficar com o typo **`npm ruin build`** — isso quebrava todos os deploys do branch `main` (que não tem `vercel.json`). Com Production Branch = `master` isso não afeta os deploys, mas corrigir/limpar o campo evita sustos futuros.
+- ⚠️ O branch `main` deste repositório é uma **reescrita diferente** (TypeScript/multi-tenant). Não promova `main` a produção sem querer substituir o sistema atual.
+
+---
+
 ## ✅ Ajustes já realizados no código
 
 - Removido `prisma migrate deploy` do build (não funciona no Vercel)

@@ -1,0 +1,32 @@
+name: Prisma Migrations (Produção)
+
+# Aplica as migrations do Prisma no banco Neon a cada mudança de schema
+# no branch master (o branch de produção). Rodar migrations no build da
+# Vercel NÃO funciona — por isso este job é separado.
+#
+# Requer o secret do repositório:
+#   DATABASE_URL = postgresql://...neon...?sslmode=require   (conexão direta, sem -pooler)
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'backend/prisma/migrations/**'
+  workflow_dispatch: # permite rodar manualmente pela aba Actions
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Aplicar migrations (prisma migrate deploy)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx -y prisma@6 migrate deploy --schema=backend/prisma/schema.prisma
