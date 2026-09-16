@@ -24,7 +24,7 @@
  */
 
 const { Client } = require('pg');
-const bcrypt = require('bcryptjs');
+const argon2 = require('argon2');
 
 // ── Configuração (pode sobrescrever via CLI) ─────────────────
 const argUrl = process.argv[2];
@@ -51,15 +51,17 @@ async function main() {
   // 1) Tenant: usa o primeiro tenant ativo; se não existir, cria um.
   let tenant = (
     await client.query(
-      'SELECT id, name, slug FROM "Tenant" WHERE active = true ORDER BY "createdAt" ASC LIMIT 1',
+      `SELECT id, name, slug FROM tenants
+       WHERE status IN ('TRIAL', 'ACTIVE') AND deleted_at IS NULL
+       ORDER BY created_at ASC LIMIT 1`,
     )
   ).rows[0];
 
   if (!tenant) {
     tenant = (
       await client.query(
-        `INSERT INTO "Tenant" (id, name, slug, email, plan, active, "createdAt", "updatedAt")
-         VALUES (gen_random_uuid(), $1, $2, $3, 'pro', true, now(), now())
+        `INSERT INTO tenants (id, name, slug, contact_email, plan, status, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 'PROFESSIONAL', 'ACTIVE', now(), now())
          RETURNING id, name, slug`,
         ['Empresa Teste', 'empresa-teste', 'contato@empresa-teste.com'],
       )
@@ -71,42 +73,34 @@ async function main() {
 
   // 2) Usuário: busca exata (login é case-sensitive: findFirst({ where: { email } }))
   const existente = (
-    await client.query('SELECT id FROM "User" WHERE email = $1 LIMIT 1', [EMAIL])
+    await client.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [EMAIL])
   ).rows[0];
 
-  const senhaHash = await bcrypt.hash(SENHA, 10);
+  const senhaHash = await argon2.hash(SENHA, {
+    type: argon2.argon2id,
+    memoryCost: Number(process.env.ARGON2_MEMORY_KB || 19456),
+    timeCost: Number(process.env.ARGON2_TIME_COST || 2),
+    parallelism: Number(process.env.ARGON2_PARALLELISM || 1),
+  });
 
   if (existente) {
     await client.query(
-      `UPDATE "User"
-         SET password = $2, role = 'ADMIN', active = true,
-             "emailVerified" = true, "updatedAt" = now()
+      `UPDATE users
+         SET password_hash = $2, role = 'ADMIN', status = 'ACTIVE', updated_at = now()
        WHERE id = $1`,
       [existente.id, senhaHash],
     );
     console.log(`✓ Senha/role atualizadas para o usuário existente ${EMAIL}`);
   } else {
     await client.query(
-      `INSERT INTO "User"
-         (id, "tenantId", email, name, password, role, "emailVerified", active, "createdAt", "updatedAt")
+      `INSERT INTO users
+         (id, tenant_id, email, name, password_hash, role, status, created_at, updated_at)
        VALUES
-         (gen_random_uuid(), $1, $2, $3, $4, 'ADMIN', true, true, now(), now())`,
+         (gen_random_uuid(), $1, $2, $3, $4, 'ADMIN', 'ACTIVE', now(), now())`,
       [tenant.id, EMAIL, NOME, senhaHash],
     );
     console.log(`✓ Usuário criado: ${EMAIL}`);
   }
-
-  // 3) Módulos do tenant (evita telas vazias/bloqueadas após o login)
-  const modulos = ['dashboard', 'chamados', 'crm', 'ecommerce', 'relatorios'];
-  for (const modulo of modulos) {
-    await client.query(
-      `INSERT INTO "TenantModule" (id, "tenantId", module, active, "createdAt")
-       VALUES (gen_random_uuid(), $1, $2, true, now())
-       ON CONFLICT ("tenantId", module) DO UPDATE SET active = true`,
-      [tenant.id, modulo],
-    );
-  }
-  console.log(`✓ ${modulos.length} módulos garantidos no tenant.`);
 
   console.log('\n──────────────────────────────────────────────');
   console.log('  CREDENCIAIS DE TESTE');
