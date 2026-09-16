@@ -29,3 +29,5 @@ node_modules/
 
 # Link local do projeto Vercel
 .vercel/
+.vercel
+.env*
