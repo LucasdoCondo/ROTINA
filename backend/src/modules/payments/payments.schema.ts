@@ -8,7 +8,7 @@ import { z } from 'zod';
  */
 
 export const PLANS = ['FREE', 'STARTER', 'PROFESSIONAL', 'ENTERPRISE'] as const;
-export const PROVIDERS = ['STRIPE', 'MERCADOPAGO', 'PAGARME', 'MANUAL'] as const;
+export const PROVIDERS = ['STRIPE', 'MERCADOPAGO', 'PAGARME', 'ASAAS', 'MANUAL'] as const;
 
 type PlanLiteral = (typeof PLANS)[number];
 

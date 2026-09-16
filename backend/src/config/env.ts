@@ -30,11 +30,21 @@ const EnvSchema = z.object({
 
   // Payment gateway (webhooks firmados con HMAC-SHA256)
   PAYMENT_PROVIDER: z
-    .enum(['STRIPE', 'MERCADOPAGO', 'PAGARME', 'MANUAL'])
+    .enum(['STRIPE', 'MERCADOPAGO', 'PAGARME', 'ASAAS', 'MANUAL'])
     .default('MANUAL'),
   PAYMENT_WEBHOOK_SECRET: z.string().default('dev-webhook-secret-change-me'),
-  // URL pública del webhook (p. ej. https://api.rotina.dev/api/v1/payments/webhook)
+  // Credenciais opcionais do Asaas; permanecem fora do código e não são
+  // necessárias para iniciar a API quando o provedor estiver MANUAL.
+  ASAAS_API_KEY: z.string().optional(),
+  ASAAS_ENV: z.enum(['sandbox', 'production']).optional(),
+  ASAAS_WEBHOOK_TOKEN: z.string().optional(),
+  // URL pública do webhook (p. ex. https://api.rotina.dev/api/v1/payments/webhook)
   PAYMENT_WEBHOOK_URL: z.string().default(''),
+  APP_NAME: z.string().default('ROTINA'),
+  APP_URL: z.string().url().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_SENDER_EMAIL: z.string().email().optional(),
+
 
   // BullMQ (colas Redis)
   QUEUE_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(4),
@@ -59,7 +69,36 @@ const EnvSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
 });
 
-const parsed = EnvSchema.safeParse(process.env);
+// Compatibilidade com as variáveis já configuradas no projeto Vercel.
+// O código usa nomes explícitos, mas instalações anteriores ainda fornecem
+// JWT_SECRET e CORS_ORIGIN. Normalizamos uma vez antes da validação para que
+// o deploy não quebre durante o cold start da Function.
+const runtimeEnv = { ...process.env };
+
+// A integração Neon pode expor aliases diferentes conforme o ambiente Vercel.
+// Normalizamos todos para os nomes usados pelo backend antes da validação.
+if (!runtimeEnv.DATABASE_URL) {
+  runtimeEnv.DATABASE_URL =
+    runtimeEnv.NEON_POSTGRES_PRISMA_URL ??
+    runtimeEnv.NEON_POSTGRES_URL ??
+    runtimeEnv.NEON_DATABASE_URL;
+}
+if (!runtimeEnv.DIRECT_URL) {
+  runtimeEnv.DIRECT_URL =
+    runtimeEnv.NEON_POSTGRES_URL_NON_POOLING ??
+    runtimeEnv.NEON_DATABASE_URL_UNPOOLED;
+}
+if (!runtimeEnv.JWT_ACCESS_SECRET && runtimeEnv.JWT_SECRET) {
+  runtimeEnv.JWT_ACCESS_SECRET = runtimeEnv.JWT_SECRET;
+}
+if (!runtimeEnv.CORS_ORIGINS && runtimeEnv.CORS_ORIGIN) {
+  runtimeEnv.CORS_ORIGINS = runtimeEnv.CORS_ORIGIN;
+}
+if (!runtimeEnv.JWT_ACCESS_TTL && runtimeEnv.JWT_EXPIRES_IN) {
+  runtimeEnv.JWT_ACCESS_TTL = runtimeEnv.JWT_EXPIRES_IN;
+}
+
+const parsed = EnvSchema.safeParse(runtimeEnv);
 
 if (!parsed.success) {
   const issues = parsed.error.issues

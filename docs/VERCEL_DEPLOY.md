@@ -122,10 +122,10 @@ DATABASE_URL=postgresql://usuario:senha@host/neondb?sslmode=require
 DIRECT_URL=postgresql://usuario:senha@host/neondb?sslmode=require
 
 # Autenticação
-JWT_SECRET=<gere com: openssl rand -base64 32>
+JWT_ACCESS_SECRET=<gere com: openssl rand -base64 48>
 
 # CORS (será atualizado após o deploy)
-CORS_ORIGIN=https://sua-url.vercel.app
+CORS_ORIGINS=https://sua-url.vercel.app
 
 # E-mail (Resend)
 RESEND_API_KEY=re_live_...

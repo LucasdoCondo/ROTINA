@@ -31,6 +31,7 @@ const KEY_MAP: Record<string, string> = {
   STRIPE: env.PAYMENT_WEBHOOK_SECRET,
   MERCADOPAGO: env.PAYMENT_WEBHOOK_SECRET,
   PAGARME: env.PAYMENT_WEBHOOK_SECRET,
+  ASAAS: env.ASAAS_WEBHOOK_TOKEN ?? env.PAYMENT_WEBHOOK_SECRET,
 };
 
 const PLAN_TO_TENANT: Record<string, 'FREE' | 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE'> = {
@@ -76,7 +77,7 @@ export const paymentsService = {
     const { tenantId } = requireTenantContext();
     const current = await tenantRepo.findCurrent();
 
-    const provider = env.PAYMENT_PROVIDER as 'STRIPE' | 'MERCADOPAGO' | 'PAGARME' | 'MANUAL';
+    const provider = env.PAYMENT_PROVIDER as 'STRIPE' | 'MERCADOPAGO' | 'PAGARME' | 'ASAAS' | 'MANUAL';
 
     const data = {
       tenantId,
