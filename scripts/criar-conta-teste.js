@@ -60,10 +60,10 @@ async function main() {
   if (!tenant) {
     tenant = (
       await client.query(
-        `INSERT INTO tenants (id, name, slug, contact_email, plan, status, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, 'PROFESSIONAL', 'ACTIVE', now(), now())
+        `INSERT INTO tenants (id, name, slug, plan, status, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, 'PROFESSIONAL', 'ACTIVE', now(), now())
          RETURNING id, name, slug`,
-        ['Empresa Teste', 'empresa-teste', 'contato@empresa-teste.com'],
+        ['Empresa Teste', 'empresa-teste'],
       )
     ).rows[0];
     console.log(`✓ Tenant criado: ${tenant.name} (${tenant.slug})`);
