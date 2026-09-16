@@ -67,6 +67,14 @@ const EnvSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV === 'production' && value.CORS_ORIGINS === '*') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CORS_ORIGINS'],
+      message: 'CORS_ORIGINS deve listar origens explícitas em produção',
+    });
+  }
 });
 
 // Compatibilidade com as variáveis já configuradas no projeto Vercel.

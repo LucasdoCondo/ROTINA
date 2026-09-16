@@ -26,6 +26,7 @@ const INVITATION_TTL_DAYS = 7;
 
 export const membersService = {
   async list(_auth: AuthUser, query: ListMembersQuery) {
+    requireTenantContext();
     const { rows, total } = await memberRepo.list(query);
     return {
       rows,
@@ -39,12 +40,14 @@ export const membersService = {
   },
 
   async getById(_auth: AuthUser, id: string) {
+    requireTenantContext();
     const member = await memberRepo.findById(id);
     if (!member) throw new EntityNotFoundError('Member', id);
     return member;
   },
 
   async update(_auth: AuthUser, id: string, input: UpdateMemberInput) {
+    requireTenantContext();
     const existing = await memberRepo.findById(id);
     if (!existing) throw new EntityNotFoundError('Member', id);
 
@@ -59,6 +62,7 @@ export const membersService = {
   },
 
   async remove(_auth: AuthUser, id: string): Promise<void> {
+    requireTenantContext();
     const existing = await memberRepo.findById(id);
     if (!existing) throw new EntityNotFoundError('Member', id);
     await memberRepo.softDelete(id);
@@ -103,7 +107,7 @@ export const membersService = {
         token,
         role: input.role,
         expiresAt: expiresAt.toISOString(),
-        appUrl: env.PAYMENT_WEBHOOK_URL ? new URL(env.PAYMENT_WEBHOOK_URL).origin : 'http://localhost:5173',
+        appUrl: env.APP_URL,
       },
       dedupeKey: `invitation-${token}`,
     });

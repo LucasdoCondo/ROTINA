@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma as prismaClient } from '../../config/prisma.js';
 import { env } from '../../config/env.js';
@@ -32,6 +33,10 @@ export interface AuthResult {
 interface ClientMeta {
   userAgent?: string;
   ipAddress?: string;
+}
+
+function refreshTokenDigest(rawToken: string): string {
+  return createHash('sha256').update(rawToken, 'utf8').digest('hex');
 }
 
 const USER_AUTH_SELECT = {
@@ -72,7 +77,7 @@ async function issueRefreshToken(
 ): Promise<{ refreshToken: string }> {
   const refreshToken =
     crypto.randomUUID().replaceAll('-', '') + crypto.randomUUID().replaceAll('-', '');
-  const refreshHash = await hashPassword(refreshToken);
+  const refreshHash = refreshTokenDigest(refreshToken);
   const expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 86_400_000);
 
   await tx.refreshToken.create({
@@ -205,7 +210,7 @@ export const authService = {
    * sesiones del usuario como medida anti-robo.
    */
   async refresh(rawToken: string, meta: ClientMeta): Promise<AuthResult> {
-    const refreshHash = await hashPassword(rawToken);
+    const refreshHash = refreshTokenDigest(rawToken);
 
     const refresh = await prismaClient.refreshToken.findFirst({
       where: { token: refreshHash },
@@ -261,7 +266,7 @@ export const authService = {
 
   /** Logout: revoca la sesión asociada al refresh token presentado. */
   async logout(rawToken: string): Promise<void> {
-    const refreshHash = await hashPassword(rawToken);
+    const refreshHash = refreshTokenDigest(rawToken);
     await prismaClient.refreshToken.updateMany({
       where: { token: refreshHash },
       data: { revokedAt: new Date() },

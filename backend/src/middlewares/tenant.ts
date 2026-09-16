@@ -27,20 +27,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 
 export const tenantIsolation: RequestHandler = async (req, _res, next) => {
   try {
-    const candidates: string[] = [];
-
     const auth = (req as { auth?: AuthUser }).auth;
-    if (auth?.tenantId) candidates.push(auth.tenantId);
+    if (!auth?.tenantId) {
+      throw new UnauthorizedError('Tenant context missing from authenticated token');
+    }
 
+    const candidates = [auth.tenantId];
     const header = req.headers[TENANT_HEADER];
     if (typeof header === 'string' && header.trim().length > 0) {
       candidates.push(header.trim());
-    }
-
-    if (candidates.length === 0) {
-      throw new UnauthorizedError(
-        'Tenant context missing: provide a valid token or x-tenant-id header',
-      );
     }
 
     const unique = [...new Set(candidates)];
