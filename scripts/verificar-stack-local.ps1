@@ -1,32 +1,42 @@
 <#
-  ROTINA - Verifica a stack de PRODUCAO local (docker-compose.prod.yml)
-  ======================================================================
+  ROTINA - Verifica a stack de PRODUCAO (docker-compose.prod.yml)
+  =====================================================================
 
-  Executa os dois passos de verificacao:
+  Arquitetura verificada (Vercel + Neon + OCI):
+    Vercel -> SPA React (build estatico) + SSL/roteamento
+    Neon   -> PostgreSQL gerenciado (nao sobe container de banco)
+    OCI    -> backend Express + Redis (docker-compose.prod.yml)
+
+  Executa os passos:
     1. docker compose -f docker-compose.prod.yml ps
        (containers de pe, sem erros, healthchecks passando)
-    2. Health check do backend
+    2. Health check da API: GET /api/v1/health
 
-  IMPORTANTE - URL correta do health check:
-    O compose de producao NAO publica a porta 3000 do backend no host
-    (por seguranca, so o Nginx fala com ele pela rede interna). Portanto:
+  IMPORTANTE - URL do health check:
+    Nao existe mais Nginx no caminho: o backend publica a porta no host,
+    portanto o health check e' feito direto na API.
 
-      ERRADO : http://localhost:3000/api/v1/health
-      CERTO  : http://localhost:<APP_PORT>/api/v1/health   (via Nginx)
+      CERTO : http://localhost:<BACKEND_PORT>/api/v1/health   (padrao: 3000)
 
-    O valor de APP_PORT vem do .env.production (padrao: 80).
-    Para falar direto com o backend, use `docker compose exec` (o script faz).
+    O valor de BACKEND_PORT vem do .env.production.
+    Para checar uma API ja publicada (OCI/Vercel), use -UrlApi.
 
   Uso (a partir da RAIZ do repositorio):
     powershell -ExecutionPolicy Bypass -File scripts\verificar-stack-local.ps1
+    powershell -ExecutionPolicy Bypass -File scripts\verificar-stack-local.ps1 -ComLogs
+    powershell -ExecutionPolicy Bypass -File scripts\verificar-stack-local.ps1 -Detalhado
+    powershell -ExecutionPolicy Bypass -File scripts\verificar-stack-local.ps1 -UrlApi https://api.seu-dominio.com/api/v1/health
 
   Observacao: as mensagens evitam acentos de proposito, para nao
   quebrar o encoding do console do Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
 param(
-  # Porta publica do Nginx. Se omitida, le APP_PORT do .env.production
+  # Porta publicada pelo backend. Se omitida, le BACKEND_PORT do .env.production
   [int]$Porta,
+
+  # Verifica uma API remota (OCI/Vercel) em vez da stack local do Docker
+  [string]$UrlApi,
 
   # Mostrar as ultimas linhas de log de cada container
   [switch]$ComLogs,
@@ -39,6 +49,9 @@ $ErrorActionPreference = 'Stop'
 $raiz = Split-Path -Parent $PSScriptRoot
 $compose = Join-Path $raiz 'docker-compose.prod.yml'
 $envFile = Join-Path $raiz '.env.production'
+
+# Servicos definidos no docker-compose.prod.yml (o Postgres e' o Neon)
+$esperados = @('redis', 'backend')
 
 function Write-Passo { param([string]$Texto) Write-Host "==> $Texto" -ForegroundColor Cyan }
 function Write-Ok    { param([string]$Texto) Write-Host "  [OK]   $Texto" -ForegroundColor Green }
@@ -105,118 +118,142 @@ function Show-SaidaNativa {
 }
 
 Write-Host ''
-Write-Host '  ROTINA - Verificacao da stack de producao local (Docker Compose)' -ForegroundColor White
-Write-Host '  -----------------------------------------------------------------' -ForegroundColor DarkGray
+Write-Host '  ROTINA - Verificacao da stack de producao (Vercel + Neon + OCI)' -ForegroundColor White
+Write-Host '  ------------------------------------------------------------------' -ForegroundColor DarkGray
 
-# ─────────────────────────────────────────────────────────────
-# 0) Pre-requisitos: arquivos, CLI e engine
-# ─────────────────────────────────────────────────────────────
-if (-not (Test-Path $compose)) {
-  Write-Erro "Nao encontrei $compose"
-  Write-Host '    Execute este script a partir da raiz do repositorio.' -ForegroundColor DarkGray
-  exit 1
-}
-if (-not (Test-Path $envFile)) {
-  Write-Erro "Nao encontrei $envFile (obrigatorio: --env-file .env.production)"
-  exit 1
-}
-
-$docker = (Get-Command docker.exe -ErrorAction SilentlyContinue).Source
-if (-not $docker) { $docker = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe' }
-if (-not (Test-Path $docker)) {
-  Write-Erro 'CLI do Docker nao encontrada.'
-  Write-Host '    Instale o Docker Desktop ou rode scripts\habilitar-docker-wsl.ps1' -ForegroundColor DarkGray
-  exit 1
-}
-
-Write-Passo 'Verificando o engine do Docker'
-$infoDocker = Invoke-NativoSaida -Arquivo $docker -Argumentos @('info') -TimeoutSegundos 20
-if ($infoDocker.Expirou) {
-  Write-Aviso 'O CLI do Docker nao respondeu em 20s (engine parado ou travado).'
-}
-if ($infoDocker.Codigo -ne 0) {
-  Write-Erro 'O engine do Docker nao esta respondendo.'
-  Write-Host ''
-  Write-Host '    Causa mais comum nesta maquina (visto no log do Docker Desktop):' -ForegroundColor Yellow
-  Write-Host '      "engine linux/wsl failed to start:' -ForegroundColor Yellow
-  Write-Host '       checking preconditions: Virtual Machine Platform not enabled"' -ForegroundColor Yellow
-  Write-Host ''
-  Write-Host '    Correcao (precisa de Administrador + reinicializacao):' -ForegroundColor White
-  Write-Host '      1) powershell -ExecutionPolicy Bypass -File scripts\habilitar-docker-wsl.ps1' -ForegroundColor White
-  Write-Host '      2) reinicie o Windows' -ForegroundColor White
-  Write-Host '      3) powershell -ExecutionPolicy Bypass -File scripts\habilitar-docker-wsl.ps1 -AposReboot' -ForegroundColor White
-  Write-Host '      4) rode este script novamente' -ForegroundColor White
-  exit 1
-}
-Write-Ok 'Engine respondendo'
-
-$dash = @('--env-file', $envFile, '-f', $compose)
 $semErro = $true
 $containers = @()
+$docker = $null
+$dash = @()
 
 # ────────────────────────────────────────────────────────────
-# 1) docker compose ps  — containers de pe e sem erros
+# 0) Pre-requisitos: arquivos, CLI e engine (ignorado com -UrlApi)
 # ─────────────────────────────────────────────────────────────
-Write-Passo 'Passo 1 - docker compose ... ps'
-Push-Location $raiz
-try {
-  $resPs = Invoke-NativoSaida -Arquivo $docker -Argumentos (@('compose') + $dash + @('ps', '--format', 'json')) -TimeoutSegundos 60
-  $codigoPs = $resPs.Codigo
-  if ($codigoPs -ne 0) {
-    Write-Erro 'Falha ao consultar os containers.'
-    Show-SaidaNativa $resPs.Texto
-    $semErro = $false
-  } else {
-    $containers = @(
-      ($resPs.Texto -split "`r?`n") |
-        Where-Object { $_ -and $_.Trim().StartsWith('{') } |
-        ForEach-Object { $_ | ConvertFrom-Json }
-    )
+if (-not $UrlApi) {
+  if (-not (Test-Path $compose)) {
+    Write-Erro "Nao encontrei $compose"
+    Write-Host '    Execute este script a partir da raiz do repositorio.' -ForegroundColor DarkGray
+    exit 1
+  }
+  if (-not (Test-Path $envFile)) {
+    Write-Erro "Nao encontrei $envFile (obrigatorio: --env-file .env.production)"
+    exit 1
   }
 
-  if ($codigoPs -eq 0 -and $containers.Count -eq 0) {
-    Write-Aviso 'Nenhum container da stack esta rodando.'
-    Write-Host '    Suba a stack com:' -ForegroundColor White
-    Write-Host '      docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build' -ForegroundColor White
-    $semErro = $false
-  } elseif ($containers.Count -gt 0) {
-    $containers | ForEach-Object {
-      $saude = if ($_.Health) { $_.Health } else { '-' }
-      $linha = '    {0,-9} estado={1,-9} health={2}' -f $_.Service, $_.State, $saude
-      if ($_.State -eq 'running' -and ($saude -eq 'healthy' -or $saude -eq '-')) {
-        Write-Host $linha -ForegroundColor Green
-      } else {
-        Write-Host $linha -ForegroundColor Yellow
-        $semErro = $false
+  $docker = (Get-Command docker.exe -ErrorAction SilentlyContinue).Source
+  if (-not $docker) { $docker = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe' }
+  if (-not (Test-Path $docker)) {
+    Write-Erro 'CLI do Docker nao encontrada.'
+    Write-Host '    Instale o Docker Desktop ou rode scripts\habilitar-docker-wsl.ps1' -ForegroundColor DarkGray
+    exit 1
+  }
+
+  Write-Passo 'Verificando o engine do Docker'
+  $infoDocker = Invoke-NativoSaida -Arquivo $docker -Argumentos @('info') -TimeoutSegundos 20
+  if ($infoDocker.Expirou) {
+    Write-Aviso 'O CLI do Docker nao respondeu em 20s (engine parado ou travado).'
+  }
+  if ($infoDocker.Codigo -ne 0) {
+    Write-Erro 'O engine do Docker nao esta respondendo.'
+    Write-Host ''
+    Write-Host '    Causa mais comum nesta maquina (visto no log do Docker Desktop):' -ForegroundColor Yellow
+    Write-Host '      "engine linux/wsl failed to start:' -ForegroundColor Yellow
+    Write-Host '       checking preconditions: Virtual Machine Platform not enabled"' -ForegroundColor Yellow
+    Write-Host ''
+    Write-Host '    Correcao (precisa de Administrador + reinicializacao):' -ForegroundColor White
+    Write-Host '      1) powershell -ExecutionPolicy Bypass -File scripts\habilitar-docker-wsl.ps1' -ForegroundColor White
+    Write-Host '      2) reinicie o Windows' -ForegroundColor White
+    Write-Host '      3) powershell -ExecutionPolicy Bypass -File scripts\habilitar-docker-wsl.ps1 -AposReboot' -ForegroundColor White
+    Write-Host '      4) rode este script novamente' -ForegroundColor White
+    exit 1
+  }
+  Write-Ok 'Engine respondendo'
+
+  $dash = @('--env-file', $envFile, '-f', $compose)
+
+  # ───────────────────────────────────────────────────────────
+  # 1) docker compose ps  — containers de pe e sem erros
+  # ─────────────────────────────────────────────────────────────
+  Write-Passo 'Passo 1 - docker compose ... ps'
+  Push-Location $raiz
+  try {
+    $resPs = Invoke-NativoSaida -Arquivo $docker -Argumentos (@('compose') + $dash + @('ps', '--format', 'json')) -TimeoutSegundos 60
+    $codigoPs = $resPs.Codigo
+    if ($codigoPs -ne 0) {
+      Write-Erro 'Falha ao consultar os containers.'
+      Show-SaidaNativa $resPs.Texto
+      $semErro = $false
+    } else {
+      $containers = @(
+        ($resPs.Texto -split "`r?`n") |
+          Where-Object { $_ -and $_.Trim().StartsWith('{') } |
+          ForEach-Object { $_ | ConvertFrom-Json }
+      )
+    }
+
+    if ($codigoPs -eq 0 -and $containers.Count -eq 0) {
+      Write-Aviso 'Nenhum container da stack esta rodando.'
+      Write-Host '    Suba a stack com:' -ForegroundColor White
+      Write-Host '      docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build' -ForegroundColor White
+      $semErro = $false
+    } elseif ($containers.Count -gt 0) {
+      $containers | ForEach-Object {
+        $saude = if ($_.Health) { $_.Health } else { '-' }
+        $linha = '    {0,-9} estado={1,-9} health={2}' -f $_.Service, $_.State, $saude
+        if ($_.State -eq 'running' -and ($saude -eq 'healthy' -or $saude -eq '-')) {
+          Write-Host $linha -ForegroundColor Green
+        } else {
+          Write-Host $linha -ForegroundColor Yellow
+          $semErro = $false
+        }
+      }
+
+      # Esperado: redis + backend (o Postgres NAO sobe — o banco e' o Neon)
+      foreach ($servico in $esperados) {
+        if (-not ($containers | Where-Object { $_.Service -eq $servico })) {
+          Write-Aviso "Servico '$servico' nao esta rodando (esperados: $($esperados -join ', '))."
+          $semErro = $false
+        }
+      }
+
+      if ($ComLogs) {
+        Write-Passo 'Ultimas linhas de log da stack'
+        $resLogs = Invoke-NativoSaida -Arquivo $docker -Argumentos (@('compose') + $dash + @('logs', '--tail', '15')) -TimeoutSegundos 60
+        Show-SaidaNativa $resLogs.Texto
       }
     }
+  } finally {
+    Pop-Location
+  }
+}
 
-    if ($containers.Count -ne 4) {
-      Write-Aviso "Esperados 4 servicos (postgres, redis, backend, nginx) - encontrados $($containers.Count)."
-      $semErro = $false
-    }
+# ─────────────────────────────────────────────────────────────
+# 2) Health check da API (direto na porta do backend — sem Nginx)
+# ─────────────────────────────────────────────────────────────
+if ($UrlApi) {
+  $url = $UrlApi
+  Write-Passo "Passo 2 - health check da API remota ($url)"
+} else {
+  if (-not $Porta) {
+    $linhaApp = Select-String -Path $envFile -Pattern '^\s*BACKEND_PORT\s*=\s*(\d+)' -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+    $Porta = if ($linhaApp) { [int]$linhaApp.Matches[0].Groups[1].Value } else { 3000 }
+  }
+  $url = "http://localhost:$Porta/api/v1/health"
+  Write-Passo "Passo 2 - health check da API local ($url)"
 
-    if ($ComLogs) {
-      Write-Passo 'Ultimas linhas de log da stack'
-      $resLogs = Invoke-NativoSaida -Arquivo $docker -Argumentos (@('compose') + $dash + @('logs', '--tail', '15')) -TimeoutSegundos 60
-      Show-SaidaNativa $resLogs.Texto
+  # Mostra apenas o HOST do banco (sem usuario/senha) para conferir o alvo
+  $linhaDb = Select-String -Path $envFile -Pattern '^\s*DATABASE_URL\s*=\s*postgresql://[^:]+:[^@]+@([^/:?]+)' -ErrorAction SilentlyContinue |
+             Select-Object -First 1
+  if ($linhaDb) {
+    $hostDb = $linhaDb.Matches[0].Groups[1].Value
+    Write-Host "    Banco (DATABASE_URL): $hostDb" -ForegroundColor DarkGray
+    if ($hostDb -notmatch 'neon') {
+      Write-Aviso 'O host do banco nao parece ser o Neon - confirme se este e o ambiente desejado.'
     }
   }
-} finally {
-  Pop-Location
 }
 
-# ─────────────────────────────────────────────────────────────
-# 2) Health check (via Nginx — a porta 3000 nao passa pelo host)
-# ─────────────────────────────────────────────────────────────
-if (-not $Porta) {
-  $linhaApp = Select-String -Path $envFile -Pattern '^\s*APP_PORT\s*=\s*(\d+)' -ErrorAction SilentlyContinue |
-              Select-Object -First 1
-  $Porta = if ($linhaApp) { [int]$linhaApp.Matches[0].Groups[1].Value } else { 80 }
-}
-
-$url = "http://localhost:$Porta/api/v1/health"
-Write-Passo "Passo 2 - health check via Nginx ($url)"
 $respondeu = $false
 try {
   $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
@@ -233,7 +270,7 @@ try {
       $semErro = $false
     }
   } catch {
-    Write-Aviso 'Resposta nao e JSON valido - o Nginx pode nao estar roteando /api/ para o backend.'
+    Write-Aviso 'Resposta nao e JSON valido - o endpoint /api/v1/health nao retornou o contrato esperado.'
     $semErro = $false
   }
   $respondeu = $true
@@ -242,16 +279,16 @@ try {
   $semErro = $false
 }
 
-if (-not $respondeu -and $containers.Count -gt 0) {
-  Write-Passo 'Fallback - health check direto no container do backend'
-  Write-Host '    (a porta 3000 nao e publicada no host; isto fala por dentro da rede Docker)' -ForegroundColor DarkGray
+if (-not $respondeu -and -not $UrlApi -and $containers.Count -gt 0) {
+  Write-Passo 'Fallback - health check por dentro do container do backend'
+  Write-Host '    (usa a rede interna do Docker; nao depende da porta publicada)' -ForegroundColor DarkGray
   Push-Location $raiz
   try {
     $resExec = Invoke-NativoSaida -Arquivo $docker -Argumentos (
       @('compose') + $dash + @('exec', '-T', 'backend', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health')) -TimeoutSegundos 30
     if ($resExec.Codigo -eq 0) {
       Write-Ok "Backend respondeu: $($resExec.Texto.Trim())"
-      Write-Host '    => A API esta de pe; revise o roteamento/porta do Nginx.' -ForegroundColor Yellow
+      Write-Host '    => A API esta de pe; verifique a publicacao da porta (BACKEND_PORT) e o TRUST_PROXY.' -ForegroundColor Yellow
     } else {
       Write-Erro 'O backend tambem nao respondeu.'
       Show-SaidaNativa $resExec.Texto

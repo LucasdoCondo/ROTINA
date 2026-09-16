@@ -73,4 +73,35 @@ Configure a URL da API em `frontend/.env` (`VITE_API_URL=http://localhost:3000/a
 O cliente HTTP injeta automaticamente o JWT (`Authorization`) e o `X-Tenant-ID`
 em todas as requisições, com refresh do access token em caso de 401.
 
+## Deploy (Vercel + Neon + OCI)
+
+| Camada | Onde roda | Como |
+| --- | --- | --- |
+| SPA (React/Vite) | **Vercel** | `vercel.json` → `@vercel/static-build` sobre `frontend/package.json` (saída `frontend/dist`) |
+| API (Express) | **Vercel Functions** | `api/index.ts` (default export da app, **sem** `app.listen()`) — `routes: /api/(.*)` |
+| API (alternativa) | **OCI (Docker)** | `docker compose --env-file .env.production -f docker-compose.prod.yml up -d backend` |
+| Banco (PostgreSQL) | **Neon** | `DATABASE_URL` **pooled** (runtime) + `DIRECT_URL` **direct** (migrations/CLI) |
+| Redis (cache/filas) | **OCI** | `REDIS_URL` (opcional; sem ele a app degrada em silêncio) |
+| Workers BullMQ + purga | **OCI** | `docker compose ... up -d worker` → `node dist/worker.js` (a Vercel congela a instância) |
+| Purga agendada | **Vercel Cron** | `crons` no `vercel.json` → `GET /api/v1/internal/jobs/purge` (protegido por `CRON_SECRET`) |
+
+O Nginx, o `frontend/Dockerfile.prod` e o CD legado (Render/Railway/Docker Hub) foram
+removidos: roteamento do SPA, SSL, cache estático e o proxy de `/api` agora são
+responsabilidade da Vercel / OCI Load Balancer.
+
+Dependências do monorepo são instaladas **uma vez na raiz** (npm workspaces → `package.json` + `package-lock.json` da raiz), o mesmo caminho que a Vercel usa.
+
+Comandos úteis:
+
+```bash
+npm install                  # workspaces + prisma generate (postinstall)
+npm run typecheck            # backend + frontend
+npm run smoke:serverless     # valida o adaptador api/index.ts (sem BD)
+npm run worker               # processo de background (BullMQ + purga) — OCI
+npm run db:deploy            # prisma migrate deploy (usa DIRECT_URL)
+```
+
+Documentação de deploy: [`docs/DEPLOY_VERCEL.md`](docs/DEPLOY_VERCEL.md) · verificação da
+stack local: `powershell -ExecutionPolicy Bypass -File scripts\verificar-stack-local.ps1`.
+
 

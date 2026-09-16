@@ -18,7 +18,14 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Conexión de RUNTIME — en Neon usar la POOLED (host com `-pooler` /
+  // `pgbouncer=true`): las functions serverless abren/cierran conexões
+  // efímeras e o pooler evita esgotar as conexões do Postgres.
   url      = env("DATABASE_URL")
+  // Conexión DIRECTA del Neon (sin `-pooler`): usada SOLO por la CLI de
+  // Prisma (`migrate deploy`). El schema la referencia → debe existir en
+  // TODOS los entornos (ver comentario en .env.example).
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------- Enums ----------

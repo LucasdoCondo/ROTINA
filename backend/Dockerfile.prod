@@ -16,6 +16,13 @@ WORKDIR /app
 # Dependências nativas (argon2 precisa de libc6-compat; Prisma de openssl)
 RUN apk add --no-cache libc6-compat openssl
 
+# O schema Prisma referencia DIRECT_URL (conexão direta do Neon, usada apenas
+# pela CLI em `migrate deploy`). No BUILD ela só precisa EXISTIR — `prisma
+# generate`/`npm ci` (postinstall) não abrem conexão. Em runtime o valor real
+# vem do .env.production (env_file do docker-compose.prod.yml).
+ARG DIRECT_URL="postgresql://build:build@localhost:5432/build"
+ENV DIRECT_URL=$DIRECT_URL
+
 # Cópia apenas do necessário para cache de camada
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/

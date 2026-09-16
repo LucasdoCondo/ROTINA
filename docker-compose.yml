@@ -117,7 +117,6 @@ services:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
       - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
     command: >
       sh -c "npm install && npm run dev -- --host 0.0.0.0"
 

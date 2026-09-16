@@ -1,5 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 import { authRoutes } from '../modules/auth/auth.routes.js';
+import { internalRoutes } from './internal.js';
 import { tenantsRoutes } from '../modules/tenants/tenants.routes.js';
 import { ticketsRoutes } from '../modules/tickets/tickets.routes.js';
 import { crmRoutes } from '../modules/crm/crm.routes.js';
@@ -39,6 +40,10 @@ v1Router.post(
 
 // Webhook de pagamentos — público (validado por assinatura HMAC, não por JWT).
 v1Router.use('/payments/webhook', paymentsRoutes);
+
+// Jobs internos (Vercel Cron / OCI) — públicos, porém protegidos por segredo
+// compartilhado (Authorization: Bearer CRON_SECRET ou x-internal-secret).
+v1Router.use('/internal', internalRoutes);
 
 // ─── A partir de aquí: AUTENTICACIÓN + AISLAMIENTO MULTI-TENANT ───
 // 1) Verifica el JWT y adjunta claims (req.auth).

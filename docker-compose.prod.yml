@@ -1,12 +1,18 @@
 # =============================================================
-#  ROTINA — Ambiente de PRODUÇÃO (Docker Compose)
+#  ROTINA — Stack de PRODUÇÃO (OCI / Oracle Cloud Infrastructure)
 #
-#  Serviços:
-#    postgres   — PostgreSQL 16 (apenas rede interna)
-#    redis      — Redis 7 (apenas rede interna)
-#    backend    — Node.js + Express (apenas rede interna)
-#    nginx      — ÚNICO ponto de entrada: serve o frontend e
-#                 roteia /api/* para o backend (porta APP_PORT)
+#  Arquitetura vigente:
+#    Vercel — SPA React (build estático `frontend/dist`), CDN, SSL e
+#             roteamento nativo (Serverless Functions quando aplicável)
+#    Neon   — PostgreSQL gerenciado (DATABASE_URL em .env.production)
+#    OCI    — backend Express (este compose) + Redis
+#
+#  Limpeza aplicada (remoção do Nginx e do deploy legado):
+#    - Serviço `nginx` REMOVIDO  → roteamento/SSL agora são da Vercel.
+#    - Serviço `frontend` REMOVIDO → o bundle vai para a Vercel (frontend/dist).
+#    - Serviço `postgres` REMOVIDO do fluxo padrão → o banco de produção é o
+#      Neon (bloco comentado no fim do arquivo como fallback self-hosted).
+#    - O backend PUBLICA a porta no host (antes só o Nginx o alcançava).
 #
 #  Uso (a partir da raiz):
 #    docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
@@ -14,38 +20,24 @@
 #    docker compose --env-file .env.production -f docker-compose.prod.yml logs -f backend
 #    docker compose --env-file .env.production -f docker-compose.prod.yml down
 #
-#  Segurança:
-#    - Postgres, Redis e Backend NÃO expõem portas ao host.
-#    - Todo tráfego entra pelo Nginx (porta 80/APP_PORT).
+#  Verificação local da stack:
+#    powershell -ExecutionPolicy Bypass -File scripts\verificar-stack-local.ps1
+#
+#  TLS na borda: exponha a API sempre atrás de HTTPS (OCI Load Balancer,
+#  Caddy/Traefik na VM ou Cloudflare). Ajuste TRUST_PROXY em .env.production
+#  para o número real de proxies (0 = exposto direto, 1 = um proxy/LB).
 # =============================================================
 
 name: rotina-prod
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: rotina-postgres-prod
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-rotina}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env.production}
-      POSTGRES_DB: ${POSTGRES_DB:-rotina}
-    volumes:
-      - rotina_pgdata_prod:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rotina} -d ${POSTGRES_DB:-rotina}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-
   redis:
     image: redis:7-alpine
-    container_name: rotina-redis-prod
+    container_name: rotina-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
-      - rotina_redisdata_prod:/data
+      - rotina_redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -57,20 +49,22 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    container_name: rotina-backend-prod
+    image: rotina-backend:prod
+    container_name: rotina-backend
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
+    # Todas as variáveis (DATABASE_URL do Neon, JWT, CORS, rate limit...)
     env_file:
       - .env.production
     environment:
-      # Dentro da rede Docker o host é o nome do serviço
-      DATABASE_URL: postgresql://${POSTGRES_USER:-rotina}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-rotina}?schema=public
-      REDIS_URL: redis://redis:6379
-    # Sem ports: acessível apenas pela rede interna (via Nginx)
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+    # Único ponto de entrada da API (não há mais Nginx na frente)
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -81,22 +75,65 @@ services:
       sh -c "npx prisma migrate deploy &&
              node dist/server.js"
 
-  nginx:
+  # ── Processos de BACKGROUND (não existem na Vercel) ──────────
+  # Workers BullMQ (e-mail/notificação) + purga diária de dados expirados.
+  # A Vercel congela a Function após cada request/response, então isso roda
+  # aqui (OCI) como processo long-lived. Mesma imagem do backend.
+  #
+  # Alternativa (parcial) na Vercel: `crons` no vercel.json chamando
+  # GET /api/v1/internal/jobs/purge — coberto por CRON_SECRET.
+  worker:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile.prod
-      args:
-        # Caminho relativo: o navegador chama a mesma origem
-        # e o Nginx roteia /api/* para o backend
-        VITE_API_URL: /api/v1
-    container_name: rotina-nginx-prod
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    image: rotina-backend:prod
+    container_name: rotina-worker
     restart: unless-stopped
     depends_on:
-      backend:
-        condition: service_started
-    ports:
-      - "${APP_PORT:-80}:80"
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+    command: ["node", "dist/worker.js"]
 
 volumes:
-  rotina_pgdata_prod:
-  rotina_redisdata_prod:
+  rotina_redisdata:
+
+# ─────────────────────────────────────────────────────────────
+#  FALLBACK OPCIONAL — PostgreSQL local/self-hosted
+#
+#  NÃO habilite este bloco quando DATABASE_URL apontar para o Neon.
+#  Para usar:
+#    1) descomente o serviço abaixo e o volume `rotina_pgdata`;
+#    2) em .env.production use:
+#         POSTGRES_USER=rotina
+#         POSTGRES_PASSWORD=<senha forte>
+#         POSTGRES_DB=rotina
+#         DATABASE_URL=postgresql://rotina:<senha>@postgres:5432/rotina?schema=public
+#       (host = nome do serviço, SEM sslmode — rede interna do Docker)
+#    3) no serviço `backend`, acrescente em depends_on:
+#         postgres:
+#           condition: service_healthy
+#
+#  postgres:
+#    image: postgres:16-alpine
+#    container_name: rotina-postgres
+#    restart: unless-stopped
+#    environment:
+#      POSTGRES_USER: ${POSTGRES_USER:-rotina}
+#      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env.production}
+#      POSTGRES_DB: ${POSTGRES_DB:-rotina}
+#    volumes:
+#      - rotina_pgdata:/var/lib/postgresql/data
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rotina} -d ${POSTGRES_DB:-rotina}"]
+#      interval: 5s
+#      timeout: 3s
+#      retries: 10
+#      start_period: 10s
+#
+#  volumes (descomentar junto):
+#    rotina_pgdata:
+# ─────────────────────────────────────────────────────────────

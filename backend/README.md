@@ -63,8 +63,9 @@ prisma/schema.prisma            # Modelos multi-tenant (Tenant, User, Session, T
 ## Puesta en marcha
 
 ```bash
-# 1. PostgreSQL
-docker compose up -d
+# 1. PostgreSQL (compose de desarrollo en la raíz del repositorio)
+npm run db:up            # equivale a: docker compose -f ../docker-compose.yml up -d
+#    En PRODUCCIÓN el banco es gestionado (Neon): DATABASE_URL con sslmode=require
 
 # 2. Variables de entorno
 cp .env.example .env            # y edita los secretos

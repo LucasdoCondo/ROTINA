@@ -1,6 +1,6 @@
 import { Queue, Worker, type QueueOptions, type WorkerOptions } from 'bullmq';
 import { Redis as IORedis } from 'ioredis';
-import { env } from './env.js';
+import { env, IS_SERVERLESS } from './env.js';
 import { logger } from '../shared/logger.js';
 
 /**
@@ -14,9 +14,28 @@ import { logger } from '../shared/logger.js';
 
 let connection: IORedis | null = null;
 
+/** Aviso único: evita poluir os logs a cada invocação serverless. */
+let avisouServerless = false;
+
 /** Conexión compartida (ini-perezosa). Retorna null si REDIS_URL no está. */
 export function getQueueConnection(): IORedis | null {
   if (!env.REDIS_URL) return null;
+
+  // Serverless (Vercel): BullMQ exige conexões long-lived
+  // (`maxRetriesPerRequest: null`) + loops de retry — incompatível com
+  // functions efêmeras (a instância é congelada depois do request/response).
+  // O processamento assíncrono roda em processo ISOLADO na OCI
+  // (backend/src/worker.ts). Aqui as filas ficam no-op (degradação silenciosa).
+  if (IS_SERVERLESS) {
+    if (!avisouServerless) {
+      avisouServerless = true;
+      logger.info(
+        'BullMQ: ambiente serverless detectado — filas desabilitadas (workers rodam na OCI)',
+      );
+    }
+    return null;
+  }
+
   if (!connection) {
     connection = new IORedis(env.REDIS_URL, {
       maxRetriesPerRequest: null, // BullMQ requiere retries ilimitados

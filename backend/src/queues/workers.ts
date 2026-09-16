@@ -1,6 +1,6 @@
 import { createWorker } from '../config/queue.js';
 import { logger } from '../shared/logger.js';
-import { env } from '../config/env.js';
+import { env, IS_SERVERLESS } from '../config/env.js';
 import { queueEmail, type EmailJob } from './email.queue.js';
 import { queueNotification, type NotificationJob } from './notification.queue.js';
 
@@ -51,6 +51,16 @@ function notify(job: NotificationJob): void {
 }
 
 export function startWorkers(): void {
+  // Guarda de arquitetura: workers BullMQ são processos long-lived e a Vercel
+  // congela a instância após cada request/response. Em serverless eles rodam
+  // isolados na OCI (backend/src/worker.ts) ou não rodam.
+  if (IS_SERVERLESS) {
+    logger.warn(
+      'BullMQ: startWorkers() ignorado em ambiente serverless — use o worker da OCI (npm run worker)',
+    );
+    return;
+  }
+
   createWorker<EmailJob>({
     name: 'email',
     handler: async ({ data }) => {

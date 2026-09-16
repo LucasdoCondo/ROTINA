@@ -21,7 +21,14 @@ import {
  *   o usuário volta ao /login.
  */
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL ??
+  // Em produção o padrão é um caminho RELATIVO (`/api/v1`): a própria Vercel
+  // serve a SPA e a Function da API na MESMA origem (vercel.json → routes
+  // `/api/(.*)` → `api/index.ts`), o que elimina CORS e cookies de terceiros.
+  // Se a API rodar em outro host (ex.: OCI), defina VITE_API_URL na Vercel
+  // (Environment Variables) — este valor é embutido no bundle em build time.
+  (import.meta.env.PROD ? '/api/v1' : 'http://localhost:3000/api/v1');
 
 const REQUEST_TIMEOUT_MS = 15_000;
 
