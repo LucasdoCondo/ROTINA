@@ -118,7 +118,7 @@ async function main() {
   console.log('⚠ Obs.: o backend em https://rotina-sjlu.vercel.app/api estava retornando');
   console.log('   HTTP 500 (FUNCTION_INVOCATION_FAILED) durante a criação deste script.');
   console.log('   Se o login falhar, verifique os logs na Vercel (funções /api) e a');
-  console.log('   variável DATABASE_URL/JWT_SECRET no painel do projeto.');
+  console.log('   variáveis DATABASE_URL/JWT_ACCESS_SECRET no painel do projeto.');
 
   await client.end();
 }

@@ -59,7 +59,22 @@ const EnvSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
 });
 
-const parsed = EnvSchema.safeParse(process.env);
+// Compatibilidade com as variáveis já configuradas no projeto Vercel.
+// O código usa nomes explícitos, mas instalações anteriores ainda fornecem
+// JWT_SECRET e CORS_ORIGIN. Normalizamos uma vez antes da validação para que
+// o deploy não quebre durante o cold start da Function.
+const runtimeEnv = { ...process.env };
+if (!runtimeEnv.JWT_ACCESS_SECRET && runtimeEnv.JWT_SECRET) {
+  runtimeEnv.JWT_ACCESS_SECRET = runtimeEnv.JWT_SECRET;
+}
+if (!runtimeEnv.CORS_ORIGINS && runtimeEnv.CORS_ORIGIN) {
+  runtimeEnv.CORS_ORIGINS = runtimeEnv.CORS_ORIGIN;
+}
+if (!runtimeEnv.JWT_ACCESS_TTL && runtimeEnv.JWT_EXPIRES_IN) {
+  runtimeEnv.JWT_ACCESS_TTL = runtimeEnv.JWT_EXPIRES_IN;
+}
+
+const parsed = EnvSchema.safeParse(runtimeEnv);
 
 if (!parsed.success) {
   const issues = parsed.error.issues
