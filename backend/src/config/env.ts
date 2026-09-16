@@ -74,6 +74,20 @@ const EnvSchema = z.object({
 // JWT_SECRET e CORS_ORIGIN. Normalizamos uma vez antes da validação para que
 // o deploy não quebre durante o cold start da Function.
 const runtimeEnv = { ...process.env };
+
+// A integração Neon pode expor aliases diferentes conforme o ambiente Vercel.
+// Normalizamos todos para os nomes usados pelo backend antes da validação.
+if (!runtimeEnv.DATABASE_URL) {
+  runtimeEnv.DATABASE_URL =
+    runtimeEnv.NEON_POSTGRES_PRISMA_URL ??
+    runtimeEnv.NEON_POSTGRES_URL ??
+    runtimeEnv.NEON_DATABASE_URL;
+}
+if (!runtimeEnv.DIRECT_URL) {
+  runtimeEnv.DIRECT_URL =
+    runtimeEnv.NEON_POSTGRES_URL_NON_POOLING ??
+    runtimeEnv.NEON_DATABASE_URL_UNPOOLED;
+}
 if (!runtimeEnv.JWT_ACCESS_SECRET && runtimeEnv.JWT_SECRET) {
   runtimeEnv.JWT_ACCESS_SECRET = runtimeEnv.JWT_SECRET;
 }
