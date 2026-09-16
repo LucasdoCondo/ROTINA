@@ -10,6 +10,10 @@
     "backend",
     "frontend"
   ],
+  "dependencies": {
+    "argon2": "^0.41.1",
+    "pg": "^8.13.1"
+  },
   "scripts": {
     "build": "npm run build --workspace frontend && npm run build --workspace backend",
     "build:web": "npm run build --workspace frontend",
