@@ -1,9 +1,8 @@
 import axios, { type AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
-import { ApiError, type ApiEnvelope, type ApiErrorBody, type AuthResponse } from '@/types/api';
+import { type ApiEnvelope, type ApiErrorBody, type AuthResponse } from '@/types/api';
+import { ApiError } from '@/types/api';
 import {
   clearSession,
-  getAccessToken,
-  getRefreshToken,
   getSessionTenantId,
   saveSession,
 } from '@/services/auth/session';
@@ -11,9 +10,11 @@ import {
 /**
  * Cliente HTTP central (Axios).
  *
- * - Request interceptor: injeta `Authorization: Bearer <jwt>` e o header
- *   multi-tenant `X-Tenant-ID` (consumido pelo tenantIsolation do backend)
- *   em TODAS as requisições automaticamente.
+ * - Request interceptor: injeta o header multi-tenant `X-Tenant-ID`
+ *   (consumido pelo tenantIsolation do backend) em TODAS as requisições.
+ * - Autenticação: feita via cookies httpOnly (`rotina_access`, `rotina_refresh`)
+ *   gerenciados pelo backend e enviados automaticamente pelo navegador/axios
+ *   com `withCredentials: true` — o frontend NÃO lê nem repassa esses cookies.
  * - Response interceptor: ante 401 em endpoint protegido, tenta UMA vez o
  *   refresh do access token (single-flight, com rotação no backend) e
  *   reinjeta os headers novos antes de reexecutar a request original.
@@ -44,10 +45,8 @@ export const api: AxiosInstance = axios.create({
 // ───────────────────────── Request ─────────────────────────
 
 api.interceptors.request.use((config) => {
-  const token = getAccessToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  // O token de acesso é httpOnly (cookie) — não injetamos Authorization header.
+  // O backend lê `rotina_access` do cookie quando não há Bearer.
   const tenantId = getSessionTenantId();
   if (tenantId) {
     config.headers['X-Tenant-ID'] = tenantId;
@@ -59,25 +58,20 @@ api.interceptors.request.use((config) => {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
-/** Troca o par de tokens (rotação no backend) e persiste a nova sessão. */
+/** Troca o par de tokens (rotação no backend). O refresh token é httpOnly,
+ *  enviado automaticamente pelo axios via cookie — não passamos body. */
 async function refreshSession(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
   try {
     // Axios "cru" de propósito: sem interceptors (não dispara o próprio fluxo).
+    // O cookie `rotina_refresh` é enviado automaticamente com withCredentials:true.
     const response = await axios.post<ApiEnvelope<AuthResponse>>(
       `${API_BASE_URL}/auth/refresh-token`,
-      { refreshToken },
+      undefined,
       { timeout: REQUEST_TIMEOUT_MS },
     );
     const result = response.data.data;
-    saveSession({
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      user: result.user,
-      tenant: result.tenant,
-    });
+    // Persiste apenas dados não-sensíveis (user, tenant). Tokens são httpOnly.
+    saveSession(result.user, result.tenant);
     return true;
   } catch {
     return false;
@@ -108,7 +102,8 @@ api.interceptors.response.use(
       const refreshed = await refreshInFlight;
 
       if (refreshed) {
-        original!.headers.Authorization = `Bearer ${getAccessToken() ?? ''}`;
+        // O access token é httpOnly (cookie) — não injetamos Authorization header.
+        // O backend lê `rotina_access` do cookie quando não há Bearer.
         const tenantId = getSessionTenantId();
         if (tenantId) {
           original!.headers['X-Tenant-ID'] = tenantId;

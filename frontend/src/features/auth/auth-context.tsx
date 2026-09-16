@@ -17,8 +17,15 @@ import type {
  * de login nem estado de loading no boot.
  * O cache do TanStack Query é limpo em login/logout para nunca vazar
  * dados entre sessões (e futuramente, entre tenants).
+ *
+ * Nota de segurança (httpOnly cookies):
+ *   - Tokens de acesso/refresh são httpOnly cookies gerenciados pelo backend.
+ *   - O frontend NÃO lê nem repassa esses tokens: o browser/Axios
+ *     (withCredentials: true) envia os cookies automaticamente; o backend
+ *       lê o refresh token do cookie `rotina_refresh` no refresh/logout.
+ *   - O que resta no localStorage são dados não-sensíveis (user, tenant)
+ *     usados pelo React para hydrated state sinônimo sem flash.
  */
-
 type AuthStatus = 'authenticated' | 'unauthenticated';
 
 interface AuthContextValue {
@@ -34,6 +41,10 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Estado persistido: APENAS dados não-sensíveis da sessão.
+ * Tokens são httpOnly cookies — não fluem pelo localStorage.
+ */
 interface PersistedState {
   user: SessionUser;
   tenant: TenantSummary;
@@ -44,13 +55,13 @@ function loadPersisted(): PersistedState | null {
   return session ? { user: session.user, tenant: session.tenant } : null;
 }
 
+/**
+ * Persiste apenas os dados não-sensíveis da sessão (user, tenant).
+ * Tokens (accessToken, refreshToken) são httpOnly cookies — não salvamos
+ * nada disso no localStorage (o frontend não lê cookies httpOnly).
+ */
 function persist(result: AuthResponse): void {
-  saveSession({
-    accessToken: result.accessToken,
-    refreshToken: result.refreshToken,
-    user: result.user,
-    tenant: result.tenant,
-  });
+  saveSession(result.user, result.tenant);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -59,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applyAuth = useCallback(
     (result: AuthResponse) => {
+      // Só persistimos dados não-sensíveis; tokens são httpOnly cookies.
       persist(result);
       queryClient.clear();
       setState({ user: result.user, tenant: result.tenant });
@@ -84,11 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      // Best-effort: revoga a sessão no backend; falha de rede não impede o logout local.
-      const session = loadSession();
-      if (session) {
-        await authService.logout(session.refreshToken);
-      }
+      // Best-effort: revoga a sessão no backend; falha de rede não impede
+      // o logout local. O refresh token é httpOnly (cookie) — enviado
+      // automaticamente pelo axios com withCredentials: true.
+      await authService.logout();
     } catch {
       // ignorado de propósito (ver comentário acima)
     } finally {

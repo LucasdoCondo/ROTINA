@@ -4,6 +4,11 @@ import type { ApiEnvelope, AuthResponse, LoginInput, RegisterInput } from '@/typ
 /**
  * Serviço de autenticação — espelha os endpoints de backend/src/modules/auth.
  * Respostas: { accessToken, refreshToken, expiresIn, user, tenant }.
+ *
+ * Nota: A autenticação é feita via cookies httpOnly (`rotina_access`,
+ * `rotina_refresh`), gerenciados pelo backend e enviados automaticamente
+ * pelo axios com `withCredentials: true`. O frontend NÃO lê nem passa
+ * esses cookies.
  */
 
 export async function login(input: LoginInput): Promise<AuthResponse> {
@@ -16,7 +21,8 @@ export async function registerTenant(input: RegisterInput): Promise<AuthResponse
   return data.data;
 }
 
-/** Revoga a sessão do refresh token informado (best-effort no chamador). */
-export async function logout(refreshToken: string): Promise<void> {
-  await api.post('/auth/logout', { refreshToken });
+/** Revoga a sessão. O refresh token é httpOnly (cookie) — backend o lê automaticamente. */
+export async function logout(): Promise<void> {
+  // POST vazio: o cookie `rotina_refresh` é enviado automaticamente pelo axios.
+  await api.post('/auth/logout');
 }

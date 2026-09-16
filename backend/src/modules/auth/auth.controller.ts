@@ -88,10 +88,13 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
 
 /** POST /api/v1/auth/logout */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = (req as ValidatedRequest).validated.body as {
-    refreshToken: string;
-  };
-  await authService.logout(refreshToken);
+  // O refresh token é httpOnly — o frontend NÃO pode ler/reenviar.
+  // O backend lê do cookie enviado automaticamente pelo browser/axios.
+  // Se o cookie não estiver presente, não há sessão a revogar (safe no-op).
+  const cookieToken = req.cookies?.rotina_refresh;
+  if (cookieToken) {
+    await authService.logout(cookieToken);
+  }
   clearSessionCookies(res);
   res.json({ success: true, data: null });
 });

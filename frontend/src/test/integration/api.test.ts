@@ -81,8 +81,8 @@ describe('AuthService — Integração com API', () => {
   it('deve realizar logout sem erros', async () => {
     vi.mocked(authService.logout).mockResolvedValueOnce(undefined);
 
-    await expect(authService.logout('refresh-token')).resolves.toBeUndefined();
-    expect(authService.logout).toHaveBeenCalledWith('refresh-token');
+    await expect(authService.logout()).resolves.toBeUndefined();
+    expect(authService.logout).toHaveBeenCalledTimes(1);
   });
 });
 
