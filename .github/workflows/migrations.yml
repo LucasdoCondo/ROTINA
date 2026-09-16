@@ -1,0 +1,68 @@
+name: Prisma Migrations (Neon)
+
+# Aplica as migrations do Prisma no banco de produção (Neon).
+#
+# Por que um workflow separado: rodar migrations no BUILD da Vercel não
+# funciona (o build roda em várias instâncias em paralelo, as Functions são
+# efêmeras e o pooler do Neon não suporta as transações de DDL).
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   DIRECT_URL   → conexão DIRETA do Neon (sem `-pooler`) ← é a usada aqui
+#   DATABASE_URL → conexão POOLED do Neon (mesma usada pela API)
+#
+# O schema referencia as duas variáveis: sem DIRECT_URL a CLI falha com P1012.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/prisma/migrations/**'
+      - 'backend/prisma/schema.prisma'
+  workflow_dispatch: # permite rodar manualmente pela aba Actions
+
+# Migrations não podem ser canceladas no meio (DDL em transação).
+concurrency:
+  group: migrations-neon
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: prisma migrate deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validar secrets
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DIRECT_URL" ]; then
+            echo "::error::Secret DIRECT_URL ausente — use a conexão DIRETA do Neon (sem -pooler)."
+            exit 1
+          fi
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Secret DATABASE_URL ausente — use a conexão POOLED do Neon."
+            exit 1
+          fi
+
+      - name: Aplicar migrations (prisma migrate deploy)
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npx -y prisma@6 migrate deploy --schema=prisma/schema.prisma
+
+      - name: Status das migrations
+        if: always()
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npx -y prisma@6 migrate status --schema=prisma/schema.prisma
