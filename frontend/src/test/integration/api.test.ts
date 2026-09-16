@@ -28,10 +28,8 @@ describe('AuthService — Integração com API', () => {
     localStorage.clear();
   });
 
-  it('deve realizar login com sucesso e retornar tokens', async () => {
+  it('deve realizar login com sucesso usando cookies httpOnly', async () => {
     const mockResponse: AuthResponse = {
-      accessToken: 'test-access-token',
-      refreshToken: 'test-refresh-token',
       expiresIn: 900,
       user: {
         id: 'user-1',
@@ -57,8 +55,6 @@ describe('AuthService — Integração com API', () => {
       password: 'password123',
     });
 
-    expect(result.accessToken).toBe('test-access-token');
-    expect(result.refreshToken).toBe('test-refresh-token');
     expect(result.user.role).toBe('ADMIN');
     expect(result.user.email).toBe('test@example.com');
     expect(authService.login).toHaveBeenCalledTimes(1);

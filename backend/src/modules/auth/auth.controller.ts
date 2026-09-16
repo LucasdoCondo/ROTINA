@@ -38,8 +38,6 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   res.status(201).json({
     success: true,
     data: {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
       user: result.user,
       tenant: result.tenant,
@@ -55,8 +53,6 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
       user: result.user,
       tenant: result.tenant,
@@ -77,8 +73,6 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
       expiresIn: result.expiresIn,
       user: result.user,
       tenant: result.tenant,

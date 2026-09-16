@@ -64,10 +64,8 @@ export interface TenantSummary {
   deletedAt: string | null;
 }
 
-/** Resposta dos endpoints de sessão (login / register-tenant / refresh-token). */
+/** Resposta dos endpoints de sessão; os tokens ficam apenas em cookies httpOnly. */
 export interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
   /** Janela de expiração do access token (JWT_ACCESS_TTL = 15m = 900s). */
   expiresIn: number;
   user: SessionUser;

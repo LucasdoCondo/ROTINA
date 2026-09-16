@@ -3,7 +3,7 @@ import type { ApiEnvelope, AuthResponse, LoginInput, RegisterInput } from '@/typ
 
 /**
  * Serviço de autenticação — espelha os endpoints de backend/src/modules/auth.
- * Respostas: { accessToken, refreshToken, expiresIn, user, tenant }.
+ * Respostas: { expiresIn, user, tenant }; tokens ficam apenas em cookies httpOnly.
  *
  * Nota: A autenticação é feita via cookies httpOnly (`rotina_access`,
  * `rotina_refresh`), gerenciados pelo backend e enviados automaticamente

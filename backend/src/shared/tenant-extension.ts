@@ -33,6 +33,12 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   'Customer',
   'Deal',
   'TicketMessage',
+  'Subscription',
+  'PaymentEvent',
+  'Invitation',
+  'Product',
+  'Order',
+  'OrderItem',
 ]);
 
 type QueryFn = (args: unknown) => Promise<unknown>;
