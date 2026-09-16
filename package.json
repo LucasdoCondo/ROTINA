@@ -2,6 +2,7 @@
   "name": "rotina",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "ROTINA — SaaS multi-tenant. Monorepo: SPA (Vercel) + API (Vercel Functions / OCI) + PostgreSQL (Neon).",
   "engines": {
     "node": ">=20.0.0"
